@@ -27,9 +27,11 @@ with eg.tag('with_tag'):
 
 print('-' * 100)
 
+
 @eg.tag('inner')
 def inner():
     eg.info('test')
+
 
 @eg.tag('outer')
 def outer():
@@ -37,6 +39,7 @@ def outer():
     inner()
 
     eg.debug('after')
+
 
 eg.debug('start')
 outer()

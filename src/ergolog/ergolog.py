@@ -18,10 +18,8 @@ class Tagger:
     tags: list[str] = []
 
     def __init__(self, tag: str = '', **kwargs: str) -> None:
-        if tag == 'job':
-            tag += '=' + uuid4().hex[:6]
         self.tag = tag
-
+        self.job = None
         self.kwargs = kwargs
 
     def __call__(self, wrapped):
@@ -35,7 +33,11 @@ class Tagger:
 
     def __enter__(self, *_):
         if self.tag:
-            Tagger.tags.append(self.tag)
+            if self.tag == 'job':
+                self.job = 'job=' + uuid4().hex[:6]
+                Tagger.tags.append(self.job)
+            else:
+                Tagger.tags.append(self.tag)
 
         for k, v in self.kwargs.items():
             Tagger.tags.append(f'{k}={v}')
@@ -43,8 +45,11 @@ class Tagger:
         return self
 
     def __exit__(self, *_):
-        if self.tag:
-            Tagger.tags.remove(self.tag)
+        if self.job:
+            Tagger.tags.remove(self.job)
+        else:
+            if self.tag:
+                Tagger.tags.remove(self.tag)
 
         for k, v in self.kwargs.items():
             Tagger.tags.remove(f'{k}={v}')
