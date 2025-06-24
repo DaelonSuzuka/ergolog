@@ -113,6 +113,7 @@ with eg.tag(keyword='tags', comma='multiple'):
 [DEBUG   ] ergo [keyword=tags, comma=multiple] (main.py:9)
 ```
 
+<!-- 
 Job IDs
 
 ```py
@@ -130,3 +131,4 @@ with eg.tag('job'):
 [INFO    ] ergo [job=34bfbe, job=80dbc9] (main.py:6) nested job ID
 [INFO    ] ergo [job=34bfbe] (main.py:7)
 ```
+-->

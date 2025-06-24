@@ -45,13 +45,13 @@ eg.debug('start')
 outer()
 eg.debug('end')
 
-print('-' * 100)
+# print('-' * 100)
 
-with eg.tag('job'):
-    eg.info('nested job ID')
-    with eg.tag('job'):
-        eg.info('')
-    eg.info('')
+# with eg.tag('job'):
+#     eg.info('nested job ID')
+#     with eg.tag('job'):
+#         eg.info('')
+#     eg.info('')
 
 print('-' * 100)
 
