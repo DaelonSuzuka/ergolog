@@ -8,6 +8,7 @@ from uuid import uuid4
 
 
 NO_COLORS = os.environ.get('ERGOLOG_NO_COLORS', None)
+NO_TIME = os.environ.get('ERGOLOG_NO_TIME', None)
 DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 
 
@@ -15,12 +16,15 @@ DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 
 
 class Tagger:
-    tags: list[str] = []
+    tag_stack: list[str] = []
 
-    def __init__(self, tag: str = '', **kwargs: str) -> None:
-        self.tag = tag
-        # self.job = None
-        self.kwargs = kwargs
+    def __init__(self, *tags: str, **kwtags: str) -> None:
+        self._tags = [*tags]
+
+        for k, v in kwtags.items():
+            self._tags.append(f'{k}={v}')
+
+        self.applied_tags = []
 
     def __call__(self, wrapped):
         """decorator"""
@@ -32,27 +36,24 @@ class Tagger:
         return wrapper
 
     def __enter__(self, *_):
-        if self.tag:
-            # if self.tag == 'job':
-            #     self.job = 'job=' + uuid4().hex[:6]
-            #     Tagger.tags.append(self.job)
-            # else:
-            Tagger.tags.append(self.tag)
+        self.applied_tags = []
 
-        for k, v in self.kwargs.items():
-            Tagger.tags.append(f'{k}={v}')
+        for tag in self._tags:
+            if tag == 'job':
+                tag = 'job=' + uuid4().hex[:6]
+
+            self.applied_tags.append(tag)
+
+        for tag in self.applied_tags:
+            Tagger.tag_stack.append(tag)
 
         return self
 
     def __exit__(self, *_):
-        # if self.job:
-        #     Tagger.tags.remove(self.job)
-        # else:
-        if self.tag:
-            Tagger.tags.remove(self.tag)
+        for tag in self.applied_tags:
+            Tagger.tag_stack.remove(tag)
 
-        for k, v in self.kwargs.items():
-            Tagger.tags.remove(f'{k}={v}')
+        self.applied_tags = []
 
 
 # --------------------------------------------------------------------------- #
@@ -97,7 +98,7 @@ class C:
 
 
 class ErgologFormatter(logging.Formatter):
-    _time = C.dim('%(asctime)s ')
+    _time = '' if NO_TIME else C.dim('%(asctime)s ')
     _meta = C.dim(' %(name)s') + ' %(tags)s' + C.dim('(%(filename)s:%(lineno)d) ')
 
     FORMATS = {
@@ -112,7 +113,7 @@ class ErgologFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno, '')
         formatter = logging.Formatter(log_fmt)
 
-        record.tags = f'[{", ".join(Tagger.tags)}] ' if Tagger.tags else ''
+        record.tags = f'[{", ".join(Tagger.tag_stack)}] ' if Tagger.tag_stack else ''
         return formatter.format(record)
 
 
@@ -171,9 +172,23 @@ class Log(logging.Logger):
 
         return Log._loggers[name]
 
-    def tag(self, tag: str = '', **kwargs: str):
-        """penis"""
-        return Tagger(tag, **kwargs)
+    def tag(self, *tags: str, **kwargs: str):
+        """apply ergolog tags
+
+        ```
+        # Use as a decorator:
+        @eg.tag('tag')
+            def func():
+                eg.info('inside')
+        # Or as context manager:
+        with eg.tag('with_tag'):
+            eg.info('one tag')
+            with eg.tag('and'):
+                eg.info('two tags')
+        ```
+
+        """
+        return Tagger(*tags, **kwargs)
 
     def trace(self):
         pass
@@ -231,19 +246,25 @@ if __name__ == '__main__':
     outer()
     eg.debug('end')
 
-    # line()
+    line()
 
-    # with eg.tag('job'):
-    #     eg.info('')
-    #     with eg.tag('job'):
-    #         eg.info('nested job ID')
-    #     eg.info('')
+    @eg.tag('job')
+    def inner_job():
+        eg.info('inner job')
+
+    @eg.tag('job')
+    def outer_job():
+        eg.info('outer job')
+        inner_job()
+        inner_job()
+
+    outer_job()
 
     line()
 
     with eg.tag(keyword='tags', comma='multiple'):
         eg.debug('')
-        with eg.tag('regular tag'):
+        with eg.tag('regular_tag'):
             eg.info('')
             with eg.tag(more='keywords'):
                 eg.info('')
