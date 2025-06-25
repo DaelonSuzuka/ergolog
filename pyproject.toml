@@ -1,6 +1,6 @@
 [project]
 name = "ergolog"
-version = "0.1.1"
+version = "0.1.2"
 description = "A minimal, ergonomic python logging wrapper"
 readme = "README.md"
 authors = [{ name = "David Kincaid", email = "daelonsuzuka@gmail.com" }]
@@ -18,6 +18,12 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/DaelonSuzuka/ergolog"
+Documentation = "https://github.com/DaelonSuzuka/ergolog"
+Repository = "https://github.com/DaelonSuzuka/ergolog"
+Issues = "https://github.com/DaelonSuzuka/ergolog/issues"
 
 [tool.uv]
 package = true
