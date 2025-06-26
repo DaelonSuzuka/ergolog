@@ -225,26 +225,6 @@ if __name__ == '__main__':
     def line():
         print('-' * 100)
 
-    from time import sleep
-
-    #! A
-    a = eg('a')
-    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t} S')):
-        a.info('before')
-        sleep(0.5)
-        a.info('after')
-
-    #! B
-    b = eg('b')
-    with eg.tag('B'), eg.timer() as t:
-        b.info('before')
-        sleep(0.5)
-        b.info('after')
-
-    b.debug(f'took {t} S')
-
-    line()
-
     eg.debug('debug')
     eg.info('info')
     eg.warning('warning')
@@ -268,6 +248,17 @@ if __name__ == '__main__':
             eg.info('two tags')
             with eg.tag('more_tags'):
                 eg.info('three tags')
+    line()
+
+    with eg.tag(keyword='tags', comma='multiple'):
+        eg.debug('')
+        with eg.tag('regular_tag'):
+            eg.info('')
+            with eg.tag(more='keywords'):
+                eg.info('')
+        eg.debug('')
+
+        from time import sleep
 
     line()
 
@@ -302,10 +293,18 @@ if __name__ == '__main__':
 
     line()
 
-    with eg.tag(keyword='tags', comma='multiple'):
-        eg.debug('')
-        with eg.tag('regular_tag'):
-            eg.info('')
-            with eg.tag(more='keywords'):
-                eg.info('')
-        eg.debug('')
+    a = eg('a')
+    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t} S')):
+        a.info('before')
+        sleep(0.5)
+        a.info('after')
+
+    line()
+
+    b = eg('b')
+    with eg.tag('B'), eg.timer() as t:
+        b.info('before')
+        sleep(0.5)
+        b.info('after')
+
+    b.debug(f'took {t} S')
