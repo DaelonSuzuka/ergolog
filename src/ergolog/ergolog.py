@@ -57,6 +57,32 @@ class ErgoTagger:
         self.applied_tags = []
 
 
+class ErgoTimer:
+    def __init__(self, cb: Optional[Callable[[str], None]]) -> None:
+        self.start = time()
+        self.cb = cb
+
+    def __call__(self, wrapped):
+        """decorator"""
+
+        def wrapper(*args, **kwargs):
+            with self:
+                return wrapped(*args, **kwargs)
+
+        return wrapper
+
+    def __repr__(self):
+        return f'{time() - self.start:.3f}'
+
+    def __enter__(self, *_):
+        self.start = time()
+        return self
+
+    def __exit__(self, *_):
+        if self.cb is not None:
+            self.cb(f'{time() - self.start:.3f}')
+
+
 # --------------------------------------------------------------------------- #
 
 
@@ -148,70 +174,65 @@ dictConfig(config)
 # *************************************************************************** #
 
 
-class ErgoTimer:
-    def __init__(self, cb: Optional[Callable[[str], None]]) -> None:
-        self.start = time()
-        self.cb = cb
-
-    def __repr__(self):
-        return f'{time() - self.start:.2f}'
-
-    def __enter__(self, *_):
-        return self
-
-    def __exit__(self, *_):
-        if self.cb is not None:
-            self.cb(f'{time() - self.start:.2f}')
-
-
 class ErgoLog(logging.Logger):
-    _loggers: dict[str, logging.Logger] = {}
+    _loggers: dict[str, 'ErgoLog'] = {}
 
-    def __init__(self) -> None:
-        self._logger = self.__call__()
+    def __init__(self, name=DEFAULT_LOGGER) -> None:
+        self._name = name
+        self._logger = logging.getLogger(name)
+
+        # avoid the extra function calls from __getattr__
+        self.debug = self._logger.debug
+        self.info = self._logger.info
+        self.warning = self._logger.warning
+        self.error = self._logger.error
+        self.critical = self._logger.critical
 
     def __getattr__(self, name: str):
         return self._logger.__getattribute__(name)
 
-    def __call__(self, name=DEFAULT_LOGGER) -> logging.Logger:
+    def __call__(self, name: str) -> 'ErgoLog':
         return self.getLogger(name)
 
-    def getLogger(self, name=DEFAULT_LOGGER) -> logging.Logger:
+    def _fix_logger_name(self, name: str) -> str:
+        return name
+
+    def getLogger(self, name: str) -> 'ErgoLog':
         """get a named logger"""
-        name = name.removeprefix(f'{DEFAULT_LOGGER}.')
+        name = name.removeprefix(f'{self._name}.')
         if name == '':
-            name = DEFAULT_LOGGER
-        if name != DEFAULT_LOGGER:
-            name = f'{DEFAULT_LOGGER}.' + name
+            name = self._name
+        if name != self._name:
+            name = f'{self._name}.' + name
 
         if name not in ErgoLog._loggers:
-            ErgoLog._loggers[name] = logging.getLogger(name)
+            ErgoLog._loggers[name] = ErgoLog(name)
 
         return ErgoLog._loggers[name]
 
     def tag(self, *tags: str, **kwargs: str):
-        """apply ergolog tags
-
-        ```
-        # Use as a decorator:
-        @eg.tag('tag')
-            def func():
-                eg.info('inside')
-        # Or as context manager:
-        with eg.tag('with_tag'):
-            eg.info('one tag')
-            with eg.tag('and'):
-                eg.info('two tags')
-        ```
-
-        """
+        """apply ergolog tags"""
         return ErgoTagger(*tags, **kwargs)
 
     def timer(self, cb: Optional[Callable[[str], None]] = None):
+        """Create a timer"""
         return ErgoTimer(cb)
 
-    def trace(self):
-        pass
+    def trace(self, func):
+        """Trace a function"""
+        with self.tag(trace=func):
+            self.debug('registering trace')
+
+        def wrapper(*args, **kwargs):
+            with self.tag(trace=func):
+                self.debug(f'executing {args} {kwargs}')
+                with self.timer() as t:
+                    result = func(*args, **kwargs)
+                self.debug(f'done in {t}S returned: {result}')
+
+            return result
+
+        return wrapper
 
 
 eg = ErgoLog()
@@ -224,6 +245,8 @@ if __name__ == '__main__':
 
     def line():
         print('-' * 100)
+
+    line()
 
     eg.debug('debug')
     eg.info('info')
@@ -239,6 +262,15 @@ if __name__ == '__main__':
     log.warning('warning')
     log.error('error')
     log.critical('critical')
+
+    line()
+
+    eg.info('')
+    one = eg('one')
+    one.info('')
+
+    two = one('two')
+    two.info('')
 
     line()
 
@@ -294,9 +326,9 @@ if __name__ == '__main__':
     line()
 
     a = eg('a')
-    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t} S')):
+    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t}S')):
         a.info('before')
-        sleep(0.5)
+        sleep(0.1)
         a.info('after')
 
     line()
@@ -304,7 +336,24 @@ if __name__ == '__main__':
     b = eg('b')
     with eg.tag('B'), eg.timer() as t:
         b.info('before')
-        sleep(0.5)
+        sleep(0.15)
         b.info('after')
 
     b.debug(f'took {t} S')
+
+    line()
+
+    @eg.timer(lambda t: a.debug(f'took {t}S'))
+    def time_me():
+        sleep(0.1)
+        eg.info('inside')
+
+    time_me()
+
+    line()
+
+    @eg.trace
+    def trace_me(a, b):
+        return a + b
+
+    trace_me(2, 2)
