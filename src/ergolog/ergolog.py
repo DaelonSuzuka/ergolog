@@ -1,7 +1,8 @@
 import logging
 import os
 from logging.config import dictConfig
-from typing import Union
+from time import time
+from typing import Callable, Optional, Union
 from uuid import uuid4
 
 # --------------------------------------------------------------------------- #
@@ -15,7 +16,7 @@ DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 # --------------------------------------------------------------------------- #
 
 
-class Tagger:
+class ErgoTagger:
     tag_stack: list[str] = []
 
     def __init__(self, *tags: str, **kwtags: str) -> None:
@@ -45,13 +46,13 @@ class Tagger:
             self.applied_tags.append(tag)
 
         for tag in self.applied_tags:
-            Tagger.tag_stack.append(tag)
+            ErgoTagger.tag_stack.append(tag)
 
         return self
 
     def __exit__(self, *_):
         for tag in self.applied_tags:
-            Tagger.tag_stack.remove(tag)
+            ErgoTagger.tag_stack.remove(tag)
 
         self.applied_tags = []
 
@@ -97,7 +98,7 @@ class C:
             return style + text + C.OFF
 
 
-class ErgologFormatter(logging.Formatter):
+class ErgoFormatter(logging.Formatter):
     _time = '' if NO_TIME else C.dim('%(asctime)s ')
     _meta = C.dim(' %(name)s') + ' %(tags)s' + C.dim('(%(filename)s:%(lineno)d) ')
 
@@ -113,7 +114,7 @@ class ErgologFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno, '')
         formatter = logging.Formatter(log_fmt)
 
-        record.tags = f'[{", ".join(Tagger.tag_stack)}] ' if Tagger.tag_stack else ''
+        record.tags = f'[{", ".join(ErgoTagger.tag_stack)}] ' if ErgoTagger.tag_stack else ''
         return formatter.format(record)
 
 
@@ -122,7 +123,7 @@ config = {
     'disable_existing_loggers': False,
     'formatters': {
         'default': {
-            '()': ErgologFormatter,
+            '()': ErgoFormatter,
         },
     },
     'handlers': {
@@ -147,7 +148,23 @@ dictConfig(config)
 # *************************************************************************** #
 
 
-class Log(logging.Logger):
+class ErgoTimer:
+    def __init__(self, cb: Optional[Callable[[str], None]]) -> None:
+        self.start = time()
+        self.cb = cb
+
+    def __repr__(self):
+        return f'{time() - self.start:.2f}'
+
+    def __enter__(self, *_):
+        return self
+
+    def __exit__(self, *_):
+        if self.cb is not None:
+            self.cb(f'{time() - self.start:.2f}')
+
+
+class ErgoLog(logging.Logger):
     _loggers: dict[str, logging.Logger] = {}
 
     def __init__(self) -> None:
@@ -167,10 +184,10 @@ class Log(logging.Logger):
         if name != DEFAULT_LOGGER:
             name = f'{DEFAULT_LOGGER}.' + name
 
-        if name not in Log._loggers:
-            Log._loggers[name] = logging.getLogger(name)
+        if name not in ErgoLog._loggers:
+            ErgoLog._loggers[name] = logging.getLogger(name)
 
-        return Log._loggers[name]
+        return ErgoLog._loggers[name]
 
     def tag(self, *tags: str, **kwargs: str):
         """apply ergolog tags
@@ -188,13 +205,16 @@ class Log(logging.Logger):
         ```
 
         """
-        return Tagger(*tags, **kwargs)
+        return ErgoTagger(*tags, **kwargs)
+
+    def timer(self, cb: Optional[Callable[[str], None]] = None):
+        return ErgoTimer(cb)
 
     def trace(self):
         pass
 
 
-eg = Log()
+eg = ErgoLog()
 
 
 # *************************************************************************** #
@@ -204,6 +224,26 @@ if __name__ == '__main__':
 
     def line():
         print('-' * 100)
+
+    from time import sleep
+
+    #! A
+    a = eg('a')
+    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t} S')):
+        a.info('before')
+        sleep(0.5)
+        a.info('after')
+
+    #! B
+    b = eg('b')
+    with eg.tag('B'), eg.timer() as t:
+        b.info('before')
+        sleep(0.5)
+        b.info('after')
+
+    b.debug(f'took {t} S')
+
+    line()
 
     eg.debug('debug')
     eg.info('info')
