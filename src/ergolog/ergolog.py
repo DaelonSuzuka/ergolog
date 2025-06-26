@@ -325,25 +325,23 @@ if __name__ == '__main__':
 
     line()
 
-    a = eg('a')
-    with eg.tag('A'), eg.timer(lambda t: a.debug(f'took {t}S')):
-        a.info('before')
+    with eg.timer(lambda t: eg.debug(f'took {t}S')):
+        eg.info('before')
         sleep(0.1)
-        a.info('after')
+        eg.info('after')
 
     line()
 
-    b = eg('b')
-    with eg.tag('B'), eg.timer() as t:
-        b.info('before')
+    with eg.timer() as t:
+        eg.info('before')
         sleep(0.15)
-        b.info('after')
+        eg.info('after')
 
-    b.debug(f'took {t} S')
+    eg.debug(f'took {t} S')
 
     line()
 
-    @eg.timer(lambda t: a.debug(f'took {t}S'))
+    @eg.timer(lambda t: eg.debug(f'took {t}S'))
     def time_me():
         sleep(0.1)
         eg.info('inside')
