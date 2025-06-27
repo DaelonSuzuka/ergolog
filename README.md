@@ -1,3 +1,5 @@
+[![.github/workflows/ci.yml](https://github.com/DaelonSuzuka/ergolog/actions/workflows/ci.yml/badge.svg)](https://github.com/DaelonSuzuka/ergolog/actions/workflows/ci.yml)
+
 # ergolog
 A minimal, ergonomic python logging wrapper
 
