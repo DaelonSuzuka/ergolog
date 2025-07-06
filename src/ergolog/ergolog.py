@@ -191,11 +191,8 @@ class ErgoLog(logging.Logger):
     def __getattr__(self, name: str):
         return self._logger.__getattribute__(name)
 
-    def __call__(self, name: str) -> 'ErgoLog':
+    def __call__(self, name=DEFAULT_LOGGER) -> 'ErgoLog':
         return self.getLogger(name)
-
-    def _fix_logger_name(self, name: str) -> str:
-        return name
 
     def getLogger(self, name: str) -> 'ErgoLog':
         """get a named logger"""
