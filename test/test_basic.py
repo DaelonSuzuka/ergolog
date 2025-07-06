@@ -1,3 +1,4 @@
+from time import sleep
 from pytest import LogCaptureFixture
 
 from ergolog import eg
@@ -29,6 +30,15 @@ def test_named_loggers(caplog: LogCaptureFixture):
 
     assert caplog.records[0].name == 'ergo.named_logger'
     assert caplog.records[0].message == 'debug'
+
+    same = eg()
+
+    assert same._logger is eg._logger
+    other = eg('other')
+    other2 = eg('other')
+
+    assert other._logger is other2._logger
+    assert other is other2
 
 
 def test_child_loggers(caplog: LogCaptureFixture):
@@ -105,3 +115,50 @@ def test_tag_decorator(caplog: LogCaptureFixture):
     assert caplog.records[3].message == 'after'
     assert caplog.records[4].tags == ''  # type: ignore
     assert caplog.records[4].message == 'end'
+
+
+def test_timer(caplog: LogCaptureFixture):
+    with eg.timer(lambda t: eg.debug(f'took {t}S')):
+        eg.info('before')
+        sleep(0.1)
+        eg.info('after')
+
+    assert len(caplog.records) == 3
+
+    assert caplog.records[0].message == 'before'
+    assert caplog.records[1].message == 'after'
+    assert 'took 0.10' in caplog.records[2].message
+
+
+def test_timer_decorator(caplog: LogCaptureFixture):
+    @eg.timer(lambda t: eg.debug(f'took {t}S'))
+    def time_me():
+        sleep(0.1)
+        eg.info('inside')
+
+    time_me()
+
+    assert len(caplog.records) == 2
+
+    assert caplog.records[0].message == 'inside'
+    assert 'took 0.10' in caplog.records[1].message
+
+
+def test_trace(caplog: LogCaptureFixture):
+    @eg.trace
+    def trace_me(a, b):
+        return a + b
+
+    trace_me(2, 2)
+
+    assert len(caplog.records) == 3
+
+    assert caplog.records[0].message == 'registering trace'
+    assert caplog.records[0].levelname == 'DEBUG'
+
+    assert caplog.records[1].message == 'executing (2, 2) {}'
+    assert caplog.records[1].levelname == 'DEBUG'
+
+    assert 'done in 0.000' in caplog.records[2].message
+    assert 'S returned: 4' in caplog.records[2].message
+    assert caplog.records[2].levelname == 'DEBUG'
