@@ -289,7 +289,7 @@ class ErgoLog(logging.Logger):
             return lambda f: self.trace(f, log_args=log_args)
 
         with self.tag(trace=func.__name__):
-            self.debug('registering trace')
+            self.warning('registering trace')
 
         def wrapper(*args, **kwargs):
             with self.tag(trace=func.__name__):

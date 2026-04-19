@@ -224,7 +224,7 @@ my_function(2, 2)
 ```
 
 ```
-[DEBUG   ] ergo [trace=my_function] (ergolog.py:241) registering trace
+[WARNING ] ergo [trace=my_function] (ergolog.py:241) registering trace
 [DEBUG   ] ergo [trace=my_function] (ergolog.py:252) done in 0.000S
 ```
 

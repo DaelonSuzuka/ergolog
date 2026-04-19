@@ -16,7 +16,7 @@
 - **callable tag** — a keyword tag value that is a zero-arg callable; called at `__enter__` time to produce the tag string (e.g. `eg.tag(job=eg.uid)`)
 - **ErgoCounter** — mutable counter/accumulator usable as a tag value; starts at 0, supports `+=`, `-=`, `==`, and `.count()` for loop enumeration; evaluated per-record (shows current value on each log line)
 - **counter** — `eg.counter()` factory method that creates an `ErgoCounter` instance
-- **trace** — decorator that logs function entry and timing; by default does not log args or return values (safe for production); use `@eg.trace(log_args=True)` to opt into full arg/return logging for local debugging
+- **trace** — decorator that logs function entry and timing; emits a `WARNING` at registration as a reminder not to leave it in production; by default does not log args or return values (safe for production); use `@eg.trace(log_args=True)` to opt into full arg/return logging for local debugging
 - **named logger** — a child logger created via `eg('name')` producing logger names like `ergo.name`
 - **child logger** — a nested named logger created from an existing named logger, e.g. `one('two')` → `ergo.one.two`
 - **ERGOLOG_NO_COLORS** — env var; when set, disables ANSI color output

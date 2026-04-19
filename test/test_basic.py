@@ -190,7 +190,7 @@ def test_trace(caplog: LogCaptureFixture):
     assert len(caplog.records) == 2
 
     assert caplog.records[0].message == 'registering trace'
-    assert caplog.records[0].levelname == 'DEBUG'
+    assert caplog.records[0].levelname == 'WARNING'
 
     # default: no args or return value logged
     assert 'done in 0.000' in caplog.records[1].message
@@ -208,7 +208,7 @@ def test_trace_log_args(caplog: LogCaptureFixture):
     assert len(caplog.records) == 3
 
     assert caplog.records[0].message == 'registering trace'
-    assert caplog.records[0].levelname == 'DEBUG'
+    assert caplog.records[0].levelname == 'WARNING'
 
     assert caplog.records[1].message == 'executing (2, 2) {}'
     assert caplog.records[1].levelname == 'DEBUG'
