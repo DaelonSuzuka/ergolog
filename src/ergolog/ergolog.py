@@ -190,7 +190,10 @@ class ErgoLog(logging.Logger):
         self.critical = self._logger.critical
 
     def __getattr__(self, name: str):
-        return self._logger.__getattribute__(name)
+        try:
+            return self._logger.__getattribute__(name)
+        except AttributeError:
+            raise AttributeError(f"'{type(self).__name__}' and its wrapped logger have no attribute '{name}'") from None
 
     def __call__(self, name=DEFAULT_LOGGER) -> 'ErgoLog':
         return self.getLogger(name)
