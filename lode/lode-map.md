@@ -16,7 +16,11 @@ lode/
 
 ## Related files outside lode/
 - `src/ergolog/ergolog.py` — entire implementation (single-file library)
-- `src/ergolog/__init__.py` — re-exports `eg`
-- `test/test_basic.py` — all tests
+- `src/ergolog/__init__.py` — re-exports `eg`, `config`, `ErgoCounter`
+- `test/test_basic.py` — core feature tests
+- `test/test_threading.py` — thread-safety tests (contextvars)
+- `test/test_exceptions.py` — exception cleanup tests
+- `test/test_counter.py` — ErgoCounter tests
 - `test/main.py` — manual/demo script
+- `.github/workflows/ci.yml` — CI (Python 3.9–3.13)
 - `pyproject.toml` — project metadata, ruff config, dev deps
