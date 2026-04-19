@@ -6,6 +6,12 @@
 - **No runtime dependencies** — ergolog is zero-dependency
 - **Dev dependencies**: pytest>=8.4.1, pytest-cov>=6.2.1
 
+## Self-test / Demo Reel
+- `src/ergolog/ergolog.py` has an `if __name__ == '__main__'` block at the bottom
+- Serves as a smoke test, demo reel, and internal example — exercises all major features
+- Not exhaustive, but must hit the main points and stay up-to-date with the current API
+- Run with: `uv run python src/ergolog/ergolog.py`
+
 ## Architecture Patterns
 - **Singleton entry point**: `eg = ErgoLog()` is the single exported instance
 - **Logger caching**: `ErgoLog._loggers` dict caches all named loggers by fully-qualified name

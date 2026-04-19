@@ -315,6 +315,8 @@ eg = ErgoLog()
 
 if __name__ == '__main__':
 
+    from time import sleep
+
     def line():
         print('-' * 100)
 
@@ -352,6 +354,7 @@ if __name__ == '__main__':
             eg.info('two tags')
             with eg.tag('more_tags'):
                 eg.info('three tags')
+
     line()
 
     with eg.tag(keyword='tags', comma='multiple'):
@@ -361,8 +364,6 @@ if __name__ == '__main__':
             with eg.tag(more='keywords'):
                 eg.info('')
         eg.debug('')
-
-    from time import sleep
 
     line()
 
@@ -374,7 +375,6 @@ if __name__ == '__main__':
     def outer():
         eg.debug('before')
         inner()
-
         eg.debug('after')
 
     eg.debug('start')
@@ -413,17 +413,25 @@ if __name__ == '__main__':
 
     line()
 
-    @eg.timer(lambda t: eg.debug(f'took {t}S'))
-    def time_me():
-        sleep(0.1)
-        eg.info('inside')
-
-    time_me()
-
-    line()
-
-    @eg.trace(log_args=True)
+    @eg.trace()
     def trace_me(a, b):
         return a + b
 
     trace_me(2, 2)
+
+    line()
+
+    counter = eg.counter()
+    with eg.tag(step=counter):
+        eg.info('start')
+        counter += 1
+        eg.info('middle')
+        counter += 1
+        eg.info('end')
+
+    line()
+
+    loops = eg.counter()
+    with eg.tag(i=loops):
+        for item in loops.count(['a', 'b', 'c']):
+            eg.info(f'item {item}')
