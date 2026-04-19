@@ -18,6 +18,7 @@
 - Tests use `pytest` with `LogCaptureFixture` (caplog) to inspect `LogRecord` objects
 - Tag assertions check `record.tags` (a custom attribute injected by `ErgoFormatter`)
 - Timer tests tolerate timing variance (e.g. `'took 0.10' in message`)
+- Exception cleanup tests in `test/test_exceptions.py` verify that tags, timers, and trace all clean up correctly when exceptions propagate through them
 - Threading tests in `test/test_threading.py` verify context isolation via `contextvars` — barriers force threads into concurrent tag contexts
 
 ## Build & CI
