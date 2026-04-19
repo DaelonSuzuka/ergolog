@@ -185,3 +185,37 @@ def test_trace(caplog: LogCaptureFixture):
     assert 'done in 0.000' in caplog.records[2].message
     assert 'S returned: 4' in caplog.records[2].message
     assert caplog.records[2].levelname == 'DEBUG'
+
+
+def test_callable_tags(caplog: LogCaptureFixture):
+    counter = iter(range(100))
+
+    with eg.tag(request_id=lambda: f'req-{next(counter)}'):
+        eg.info('first')
+        with eg.tag(request_id=lambda: f'req-{next(counter)}'):
+            eg.info('nested')
+
+    assert len(caplog.records) == 2
+
+    # Outer tag is req-0, nested adds req-1 on top
+    assert caplog.records[0].tags == '[request_id=req-0] '  # type: ignore
+    assert caplog.records[1].tags == '[request_id=req-0, request_id=req-1] '  # type: ignore
+
+
+def test_uid_helper(caplog: LogCaptureFixture):
+    with eg.tag(job=eg.uid):
+        eg.info('one')
+        with eg.tag(job=eg.uid):
+            eg.info('two')
+
+    assert len(caplog.records) == 2
+
+    # Each entry generates a unique 6-char hex ID
+    outer = caplog.records[0].tag_list[0]  # type: ignore
+    inner = caplog.records[1].tag_list[1]  # type: ignore  — nested, so second tag
+
+    assert outer.startswith('job=')
+    assert inner.startswith('job=')
+    assert len(outer) == 10  # 'job=' + 6 chars
+    assert len(inner) == 10
+    assert outer != inner  # unique per entry

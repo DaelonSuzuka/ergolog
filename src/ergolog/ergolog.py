@@ -20,11 +20,9 @@ DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 class ErgoTagger:
     _tag_stack_var: ContextVar[list[str]] = ContextVar('tag_stack', default=[])
 
-    def __init__(self, *tags: str, **kwtags: str) -> None:
+    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str]]) -> None:
         self._tags = [*tags]
-
-        for k, v in kwtags.items():
-            self._tags.append(f'{k}={v}')
+        self._kwtags = kwtags
 
         self.applied_tags = []
 
@@ -38,13 +36,10 @@ class ErgoTagger:
         return wrapper
 
     def __enter__(self, *_):
-        self.applied_tags = []
+        self.applied_tags = [*self._tags]
 
-        for tag in self._tags:
-            if tag == 'job':
-                tag = 'job=' + uuid4().hex[:6]
-
-            self.applied_tags.append(tag)
+        for k, v in self._kwtags.items():
+            self.applied_tags.append(f'{k}={v()}' if callable(v) else f'{k}={v}')
 
         current = self._tag_stack_var.get()
         new_stack = current + self.applied_tags
@@ -220,7 +215,7 @@ class ErgoLog(logging.Logger):
 
         return ErgoLog._loggers[name]
 
-    def tag(self, *tags: str, **kwargs: str):
+    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str]]):
         """apply ergolog tags"""
         return ErgoTagger(*tags, **kwargs)
 
@@ -228,13 +223,18 @@ class ErgoLog(logging.Logger):
         """Create a timer"""
         return ErgoTimer(cb)
 
+    @staticmethod
+    def uid():
+        """Generate a short unique ID (6-char hex) for use as a callable tag value"""
+        return uuid4().hex[:6]
+
     def trace(self, func):
         """Trace a function"""
-        with self.tag(trace=func):
+        with self.tag(trace=func.__name__):
             self.debug('registering trace')
 
         def wrapper(*args, **kwargs):
-            with self.tag(trace=func):
+            with self.tag(trace=func.__name__):
                 self.debug(f'executing {args} {kwargs}')
                 with self.timer() as t:
                     result = func(*args, **kwargs)
@@ -321,11 +321,11 @@ if __name__ == '__main__':
 
     line()
 
-    @eg.tag('job')
+    @eg.tag(job=eg.uid)
     def inner_job():
         eg.info('inner job')
 
-    @eg.tag('job')
+    @eg.tag(job=eg.uid)
     def outer_job():
         eg.info('outer job')
         inner_job()

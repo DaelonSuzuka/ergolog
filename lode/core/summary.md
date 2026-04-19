@@ -62,8 +62,9 @@ classDiagram
 ### Tag System
 - `ErgoTagger._tag_stack_var` is a `contextvars.ContextVar` — each thread and async task gets its own isolated tag stack
 - Tags nest: entering a tag `set()`s a new stack, exiting `reset(token)`s to the previous snapshot
-- `job` tag auto-generates `job=<6-char-hex>` on each `__enter__`
-- Keyword tags render as `key=value`
+- Keyword tag values can be callables (zero-arg, returning a string) — called at `__enter__` time to generate the tag value
+- `eg.uid` is a static method returning a 6-char hex UUID — the idiomatic callable for `eg.tag(job=eg.uid)`
+- No magic tag names — `'job'` is not special; auto-generated IDs use the callable mechanism instead
 - Tags are injected onto `LogRecord` by `ErgoTagFilter`, not by the formatter — any formatter can access `record.tags` and `record.tag_list`
 - `record.tag_list` is the raw list of tag strings (for structured/JSON logging); `record.tags` is the formatted display string (for pretty output)
 - The `set()/reset()` pattern eliminates `list.remove()` corruption bugs that occurred with a shared mutable list

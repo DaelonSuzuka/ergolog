@@ -11,7 +11,9 @@
 - **tag_list** — the raw list of active tags on `LogRecord.tag_list` (set by `ErgoTagFilter`); structured equivalent of `record.tags` for use by JSON/structured loggers
 - **tag** — a short string label prepended to log messages inside `with eg.tag(...)` or `@eg.tag(...)` blocks
 - **kwtags** — keyword-argument tags rendered as `key=value` in the tag bracket
-- **job** — a special tag name that auto-generates a 6-char hex UUID (`job=34bfbe`) each time the tag context is entered
+- **job** — no longer a magic tag name; use `eg.tag(job=eg.uid)` to get auto-generated UUID tags
+- **uid** — `eg.uid` static method, returns a 6-char hex UUID; intended as a callable tag value
+- **callable tag** — a keyword tag value that is a zero-arg callable; called at `__enter__` time to produce the tag string (e.g. `eg.tag(job=eg.uid)`)
 - **trace** — decorator that logs function registration, arguments, and return value with timing
 - **named logger** — a child logger created via `eg('name')` producing logger names like `ergo.name`
 - **child logger** — a nested named logger created from an existing named logger, e.g. `one('two')` → `ergo.one.two`
