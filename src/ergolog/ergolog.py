@@ -97,26 +97,19 @@ class C:
     STRIKETHROUGH = '\033[9m'
     OFF = '\033[0m'
 
-    if NO_COLORS:
-
-        @classmethod
-        def dim(cls, text: str):
+    @classmethod
+    def dim(cls, text: str):
+        if NO_COLORS:
             return text
+        return C.DIM + text + C.OFF
 
-        @classmethod
-        def apply(cls, text: str, style: Union[str, list[str]]):
+    @classmethod
+    def apply(cls, text: str, style: Union[str, list[str]]):
+        if NO_COLORS:
             return text
-    else:
-
-        @classmethod
-        def dim(cls, text: str):
-            return C.DIM + text + C.OFF
-
-        @classmethod
-        def apply(cls, text: str, style: Union[str, list[str]]):
-            if isinstance(style, list):
-                style = ''.join(style)
-            return style + text + C.OFF
+        if isinstance(style, list):
+            style = ''.join(style)
+        return style + text + C.OFF
 
 
 class ErgoTagFilter(logging.Filter):
