@@ -81,9 +81,11 @@ classDiagram
 - Optional callback receives formatted elapsed string
 
 ### Trace Decorator
-- Logs registration, arguments, and return value
+- Logs function name and timing by default (safe for production)
+- `@eg.trace(log_args=True)` opts into logging arguments and return values (for local debugging only)
+- `@eg.trace()` requires parens — no bare `@eg.trace`
 - Wraps function with both `tag` and `timer`
-- Equivalent to `@eg.tag(trace=func)` + `@eg.timer()`
+- Equivalent to `@eg.tag(trace=func.__name__)` + `@eg.timer()`
 
 ## Invariants
 - `ErgoLog._loggers` key is always the fully-qualified logger name (e.g. `ergo.sub`)

@@ -168,7 +168,25 @@ def test_timer_decorator(caplog: LogCaptureFixture):
 
 
 def test_trace(caplog: LogCaptureFixture):
-    @eg.trace
+    @eg.trace()
+    def trace_me(a, b):
+        return a + b
+
+    trace_me(2, 2)
+
+    assert len(caplog.records) == 2
+
+    assert caplog.records[0].message == 'registering trace'
+    assert caplog.records[0].levelname == 'DEBUG'
+
+    # default: no args or return value logged
+    assert 'done in 0.000' in caplog.records[1].message
+    assert 'S returned:' not in caplog.records[1].message
+    assert caplog.records[1].levelname == 'DEBUG'
+
+
+def test_trace_log_args(caplog: LogCaptureFixture):
+    @eg.trace(log_args=True)
     def trace_me(a, b):
         return a + b
 

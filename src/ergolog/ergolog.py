@@ -228,17 +228,28 @@ class ErgoLog(logging.Logger):
         """Generate a short unique ID (6-char hex) for use as a callable tag value"""
         return uuid4().hex[:6]
 
-    def trace(self, func):
-        """Trace a function"""
+    def trace(self, func=None, *, log_args=False):
+        """Trace a function — logs entry, timing, and optionally args/return values.
+
+        By default, only logs function name and timing (safe for production).
+        Use log_args=True to log arguments and return values (for local debugging only).
+        """
+        if func is None:
+            return lambda f: self.trace(f, log_args=log_args)
+
         with self.tag(trace=func.__name__):
             self.debug('registering trace')
 
         def wrapper(*args, **kwargs):
             with self.tag(trace=func.__name__):
-                self.debug(f'executing {args} {kwargs}')
+                if log_args:
+                    self.debug(f'executing {args} {kwargs}')
                 with self.timer() as t:
                     result = func(*args, **kwargs)
-                self.debug(f'done in {t}S returned: {result}')
+                if log_args:
+                    self.debug(f'done in {t}S returned: {result}')
+                else:
+                    self.debug(f'done in {t}S')
 
             return result
 
@@ -360,7 +371,7 @@ if __name__ == '__main__':
 
     line()
 
-    @eg.trace
+    @eg.trace(log_args=True)
     def trace_me(a, b):
         return a + b
 
