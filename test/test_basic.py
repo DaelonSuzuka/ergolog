@@ -167,6 +167,19 @@ def test_timer_decorator(caplog: LogCaptureFixture):
     assert 'took 0.10' in caplog.records[1].message
 
 
+def test_timer_no_callback(caplog: LogCaptureFixture):
+    """Timer with no callback should work as a context manager with repr."""
+    with eg.timer() as t:
+        sleep(0.05)
+
+    elapsed = float(repr(t))
+    assert elapsed >= 0.04
+
+    # No timer log should appear — callback is None
+    timer_logs = [r for r in caplog.records if 'took' in r.message]
+    assert len(timer_logs) == 0
+
+
 def test_trace(caplog: LogCaptureFixture):
     @eg.trace()
     def trace_me(a, b):
