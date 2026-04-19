@@ -25,6 +25,14 @@ classDiagram
         +__exit__()
         +__call__(wrapped) decorator
     }
+    class ErgoCounter {
+        -_value: int
+        +__iadd__(other)
+        +__isub__(other)
+        +__repr__() str
+        +__eq__(other) bool
+        +count(iterable) iterator
+    }
     class ErgoTagFilter {
         +filter(record) bool
     }
@@ -47,6 +55,7 @@ classDiagram
     }
     ErgoLog --> ErgoTagger : creates via .tag()
     ErgoLog --> ErgoTimer : creates via .timer()
+    ErgoLog --> ErgoCounter : creates via .counter()
     ErgoTagFilter --> ErgoTagger : reads _tag_stack_var
     ErgoFormatter --> C : uses for styling
 ```
@@ -75,8 +84,14 @@ classDiagram
 - Applications that configure logging before importing ergolog won't get stomped on
 - `ErgoTagFilter` is registered in `config['handlers']['default']['filters']` — custom handlers that want tags should include it
 
+### Counter/Accumulator
+- `eg.counter()` creates an `ErgoCounter` instance (starts at 0)
+- Supports `+=` (increment/accumulate), `-=` (decrement), `==` (comparison to int or other counter)
+- `.count(iterable)` wraps iteration and auto-increments each loop
+- As a tag kwarg value, evaluated per-record (shows current value on each log line, unlike `eg.uid` which is evaluated once on enter)
+- `ErgoCounter` objects are stored as `tuple(key, counter)` on the tag stack; the filter formats them at log time
+
 ### Timer
-- Uses `time.time()` for wall-clock measurement
 - Can be used as context manager (access elapsed via `repr(timer)`) or decorator
 - Optional callback receives formatted elapsed string
 

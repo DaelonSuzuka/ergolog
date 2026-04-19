@@ -17,6 +17,42 @@ DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 # --------------------------------------------------------------------------- #
 
 
+class ErgoCounter:
+    """A mutable counter/accumulator that can be used as a tag value.
+
+    Starts at 0. Supports += for accumulation and .count() for loop enumeration.
+    When used as a tag kwarg value, it shows its current value on each log line.
+    """
+
+    def __init__(self):
+        self._value = 0
+
+    def __iadd__(self, other):
+        self._value += other
+        return self
+
+    def __isub__(self, other):
+        self._value -= other
+        return self
+
+    def __repr__(self):
+        return str(self._value)
+
+    def __str__(self):
+        return str(self._value)
+
+    def __eq__(self, other):
+        if isinstance(other, ErgoCounter):
+            return self._value == other._value
+        return self._value == other
+
+    def count(self, iterable):
+        """Iterate over an iterable, incrementing the counter each iteration."""
+        for item in iterable:
+            self._value += 1
+            yield item
+
+
 class ErgoTagger:
     _tag_stack_var: ContextVar[list[str]] = ContextVar('tag_stack', default=[])
 
@@ -39,7 +75,10 @@ class ErgoTagger:
         self.applied_tags = [*self._tags]
 
         for k, v in self._kwtags.items():
-            self.applied_tags.append(f'{k}={v()}' if callable(v) else f'{k}={v}')
+            if isinstance(v, ErgoCounter):
+                self.applied_tags.append((k, v))
+            else:
+                self.applied_tags.append(f'{k}={v()}' if callable(v) else f'{k}={v}')
 
         current = self._tag_stack_var.get()
         new_stack = current + self.applied_tags
@@ -115,8 +154,19 @@ class C:
 class ErgoTagFilter(logging.Filter):
     def filter(self, record):
         stack = ErgoTagger._tag_stack_var.get()
-        record.tag_list = stack
-        record.tags = f'[{", ".join(stack)}] ' if stack else ''
+        tag_strings = []
+        tag_list = []
+        for tag in stack:
+            if isinstance(tag, tuple):
+                key, counter = tag
+                s = f'{key}={counter}'
+                tag_strings.append(s)
+                tag_list.append(s)
+            else:
+                tag_strings.append(tag)
+                tag_list.append(tag)
+        record.tag_list = tag_list
+        record.tags = f'[{", ".join(tag_strings)}] ' if tag_strings else ''
         return True
 
 
@@ -223,6 +273,11 @@ class ErgoLog(logging.Logger):
     def uid():
         """Generate a short unique ID (6-char hex) for use as a callable tag value"""
         return uuid4().hex[:6]
+
+    @staticmethod
+    def counter():
+        """Create a mutable counter/accumulator for use as a tag value"""
+        return ErgoCounter()
 
     def trace(self, func=None, *, log_args=False):
         """Trace a function — logs entry, timing, and optionally args/return values.
