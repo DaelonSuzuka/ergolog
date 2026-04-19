@@ -56,7 +56,7 @@ class ErgoCounter:
 class ErgoTagger:
     _tag_stack_var: ContextVar[list[str]] = ContextVar('tag_stack', default=[])
 
-    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str]]) -> None:
+    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str], 'ErgoCounter']) -> None:
         self._tags = [*tags]
         self._kwtags = kwtags
 
@@ -261,7 +261,7 @@ class ErgoLog(logging.Logger):
 
         return ErgoLog._loggers[name]
 
-    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str]]):
+    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str], ErgoCounter]):
         """apply ergolog tags"""
         return ErgoTagger(*tags, **kwargs)
 
