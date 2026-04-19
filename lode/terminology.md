@@ -8,6 +8,7 @@
 - **ErgoFormatter** — custom `logging.Formatter` that provides colored, level-based formatting; reads `record.tags` (set by filter) rather than reading the tag stack directly
 - **C** — ANSI color/style utility class; all output styling flows through `C.apply()` and `C.dim()`
 - **tag_stack** — the per-context list of active tags, stored in `ErgoTagger._tag_stack_var` (a `contextvars.ContextVar`); each thread and async task sees its own isolated stack
+- **tag_list** — the raw list of active tags on `LogRecord.tag_list` (set by `ErgoTagFilter`); structured equivalent of `record.tags` for use by JSON/structured loggers
 - **tag** — a short string label prepended to log messages inside `with eg.tag(...)` or `@eg.tag(...)` blocks
 - **kwtags** — keyword-argument tags rendered as `key=value` in the tag bracket
 - **job** — a special tag name that auto-generates a 6-char hex UUID (`job=34bfbe`) each time the tag context is entered

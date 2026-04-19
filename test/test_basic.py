@@ -77,6 +77,22 @@ def test_tags(caplog: LogCaptureFixture):
     assert caplog.records[2].tags == '[a] '  # type: ignore
 
 
+def test_tag_list_structured(caplog: LogCaptureFixture):
+    with eg.tag('positional', keyword='val'):
+        eg.info('test')
+        with eg.tag('inner'):
+            eg.info('nested')
+
+    assert len(caplog.records) == 2
+
+    assert caplog.records[0].tag_list == ['positional', 'keyword=val']  # type: ignore
+    assert caplog.records[1].tag_list == ['positional', 'keyword=val', 'inner']  # type: ignore
+
+    # no tags outside context
+    eg.info('no tags')
+    assert caplog.records[2].tag_list == []  # type: ignore
+
+
 def test_kwtags(caplog: LogCaptureFixture):
     with eg.tag(a='a'):
         eg.debug('')

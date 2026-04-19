@@ -64,7 +64,8 @@ classDiagram
 - Tags nest: entering a tag `set()`s a new stack, exiting `reset(token)`s to the previous snapshot
 - `job` tag auto-generates `job=<6-char-hex>` on each `__enter__`
 - Keyword tags render as `key=value`
-- Tags are injected onto `LogRecord.tags` by `ErgoTagFilter`, not by the formatter — any formatter can access `record.tags`
+- Tags are injected onto `LogRecord` by `ErgoTagFilter`, not by the formatter — any formatter can access `record.tags` and `record.tag_list`
+- `record.tag_list` is the raw list of tag strings (for structured/JSON logging); `record.tags` is the formatted display string (for pretty output)
 - The `set()/reset()` pattern eliminates `list.remove()` corruption bugs that occurred with a shared mutable list
 
 ### Config

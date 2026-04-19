@@ -127,6 +127,7 @@ class C:
 class ErgoTagFilter(logging.Filter):
     def filter(self, record):
         stack = ErgoTagger._tag_stack_var.get()
+        record.tag_list = stack
         record.tags = f'[{", ".join(stack)}] ' if stack else ''
         return True
 
