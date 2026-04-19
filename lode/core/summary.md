@@ -18,12 +18,15 @@ classDiagram
         +trace(func) wrapper
     }
     class ErgoTagger {
-        tag_stack: list~str~
+        _tag_stack_var: ContextVar
         -_tags: list~str~
         +applied_tags: list~str~
         +__enter__()
         +__exit__()
         +__call__(wrapped) decorator
+    }
+    class ErgoTagFilter {
+        +filter(record) bool
     }
     class ErgoTimer {
         -start: float
@@ -44,8 +47,8 @@ classDiagram
     }
     ErgoLog --> ErgoTagger : creates via .tag()
     ErgoLog --> ErgoTimer : creates via .timer()
+    ErgoTagFilter --> ErgoTagger : reads _tag_stack_var
     ErgoFormatter --> C : uses for styling
-    ErgoFormatter --> ErgoTagger : reads tag_stack
 ```
 
 ## Key Behaviors
@@ -61,8 +64,14 @@ classDiagram
 - Tags nest: entering a tag `set()`s a new stack, exiting `reset(token)`s to the previous snapshot
 - `job` tag auto-generates `job=<6-char-hex>` on each `__enter__`
 - Keyword tags render as `key=value`
-- Tags are injected into `LogRecord.tags` by `ErgoFormatter.format()`
+- Tags are injected onto `LogRecord.tags` by `ErgoTagFilter`, not by the formatter — any formatter can access `record.tags`
 - The `set()/reset()` pattern eliminates `list.remove()` corruption bugs that occurred with a shared mutable list
+
+### Config
+- `config` dict is exposed as `from ergolog import config` — modifiable before setup
+- `dictConfig(config)` only fires on import if the default logger has no existing handlers
+- Applications that configure logging before importing ergolog won't get stomped on
+- `ErgoTagFilter` is registered in `config['handlers']['default']['filters']` — custom handlers that want tags should include it
 
 ### Timer
 - Uses `time.time()` for wall-clock measurement
@@ -78,4 +87,6 @@ classDiagram
 - `ErgoLog._loggers` key is always the fully-qualified logger name (e.g. `ergo.sub`)
 - Tag stacks are context-isolated via `contextvars.ContextVar` — no cross-thread or cross-task leakage
 - `set()/reset(token)` ensures tags are always cleaned up on context exit, even on exceptions
+- `ErgoTagFilter` must be present on any handler that needs `record.tags` — custom configs must include it
+- `dictConfig` only runs on import if the default logger has no existing handlers
 - Color output is all-or-nothing per process (env var check at import time)

@@ -124,6 +124,13 @@ class C:
             return style + text + C.OFF
 
 
+class ErgoTagFilter(logging.Filter):
+    def filter(self, record):
+        stack = ErgoTagger._tag_stack_var.get()
+        record.tags = f'[{", ".join(stack)}] ' if stack else ''
+        return True
+
+
 class ErgoFormatter(logging.Formatter):
     _time = '' if NO_TIME else C.dim('%(asctime)s ')
     _meta = C.dim(' %(name)s') + ' %(tags)s' + C.dim('(%(filename)s:%(lineno)d) ')
@@ -139,14 +146,17 @@ class ErgoFormatter(logging.Formatter):
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno, '')
         formatter = logging.Formatter(log_fmt)
-
-        record.tags = f'[{", ".join(ErgoTagger._tag_stack_var.get())}] ' if ErgoTagger._tag_stack_var.get() else ''
         return formatter.format(record)
 
 
 config = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'tags': {
+            '()': ErgoTagFilter,
+        },
+    },
     'formatters': {
         'default': {
             '()': ErgoFormatter,
@@ -154,6 +164,7 @@ config = {
     },
     'handlers': {
         'default': {
+            'filters': ['tags'],
             'formatter': 'default',
             'class': 'logging.StreamHandler',
             'stream': 'ext://sys.stdout',
@@ -168,7 +179,8 @@ config = {
     },
 }
 
-dictConfig(config)
+if not logging.getLogger(DEFAULT_LOGGER).handlers:
+    dictConfig(config)
 
 
 # *************************************************************************** #

@@ -1,7 +1,14 @@
 from time import sleep
 from pytest import LogCaptureFixture
 
-from ergolog import eg
+from ergolog import eg, config
+
+
+def test_config_exposed():
+    assert isinstance(config, dict)
+    assert 'handlers' in config
+    assert 'formatters' in config
+    assert 'loggers' in config
 
 
 def test_basic_logging(caplog: LogCaptureFixture):

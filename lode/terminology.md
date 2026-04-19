@@ -4,7 +4,8 @@
 - **ErgoLog** — the core logger class extending `logging.Logger`; manages named/child logger instances and exposes `.tag()`, `.timer()`, `.trace`
 - **ErgoTagger** — context-manager/decorator that pushes tags onto a shared `tag_stack`; supports positional tags (`'tag'`), keyword tags (`key='val'`), and auto-UUID `job` tags
 - **ErgoTimer** — context-manager/decorator that tracks elapsed wall-clock time via `time.time()`; optionally calls a callback on exit
-- **ErgoFormatter** — custom `logging.Formatter` that injects tags, color, and optional timestamps into log records
+- **ErgoTagFilter** — `logging.Filter` subclass that injects `record.tags` from the context-local tag stack; decouples tags from the formatter
+- **ErgoFormatter** — custom `logging.Formatter` that provides colored, level-based formatting; reads `record.tags` (set by filter) rather than reading the tag stack directly
 - **C** — ANSI color/style utility class; all output styling flows through `C.apply()` and `C.dim()`
 - **tag_stack** — the per-context list of active tags, stored in `ErgoTagger._tag_stack_var` (a `contextvars.ContextVar`); each thread and async task sees its own isolated stack
 - **tag** — a short string label prepended to log messages inside `with eg.tag(...)` or `@eg.tag(...)` blocks
@@ -15,4 +16,5 @@
 - **child logger** — a nested named logger created from an existing named logger, e.g. `one('two')` → `ergo.one.two`
 - **ERGOLOG_NO_COLORS** — env var; when set, disables ANSI color output
 - **ERGOLOG_NO_TIME** — env var; when set, suppresses timestamp prefix
+- **config** — the exposed `dictConfig`-compatible dict; modifiable before ergolog sets up, useful for changing handlers, formatters, levels, etc.
 - **ERGOLOG_DEFAULT_LOGGER** — env var; overrides the default logger name (default: `'ergo'`)

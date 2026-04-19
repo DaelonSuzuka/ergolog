@@ -1,4 +1,4 @@
-from .ergolog import eg
+from .ergolog import eg, config
 
 
-__all__ = ['eg']
+__all__ = ['eg', 'config']
