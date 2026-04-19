@@ -1,0 +1,27 @@
+# Practices
+
+## Code Style
+- **Formatter**: ruff (line-length 120, single quotes)
+- **Python version**: >=3.9
+- **No runtime dependencies** — ergolog is zero-dependency
+- **Dev dependencies**: pytest>=8.4.1, pytest-cov>=6.2.1
+
+## Architecture Patterns
+- **Singleton entry point**: `eg = ErgoLog()` is the single exported instance
+- **Logger caching**: `ErgoLog._loggers` dict caches all named loggers by fully-qualified name
+- **Context-local tag state**: `ErgoTagger._tag_stack_var` is a `contextvars.ContextVar`; each thread and async task gets its own isolated tag stack via `set()/reset(token)`
+- **Logging delegation**: `ErgoLog` wraps a stdlib `logging.Logger` stored as `self._logger`; standard log methods are bound directly to avoid `__getattr__` overhead
+- **dictConfig initialization**: logging is configured at module import time via `logging.config.dictConfig`
+- **Color as opt-in/opt-out**: colors enabled by default; `ERGOLOG_NO_COLORS` strips all ANSI codes
+
+## Testing
+- Tests use `pytest` with `LogCaptureFixture` (caplog) to inspect `LogRecord` objects
+- Tag assertions check `record.tags` (a custom attribute injected by `ErgoFormatter`)
+- Timer tests tolerate timing variance (e.g. `'took 0.10' in message`)
+- Threading tests in `test/test_threading.py` verify context isolation via `contextvars` — barriers force threads into concurrent tag contexts
+
+## Build & CI
+- Package manager: `uv`
+- CI: GitHub Actions (`ci.yml`) on push to `master`, matrix: Python 3.9–3.12
+- Install: `uv sync --locked --all-extras --dev`
+- Test: `uv run pytest`

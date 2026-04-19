@@ -1,5 +1,6 @@
 import logging
 import os
+from contextvars import ContextVar
 from logging.config import dictConfig
 from time import time
 from typing import Callable, Optional, Union
@@ -17,7 +18,7 @@ DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
 
 
 class ErgoTagger:
-    tag_stack: list[str] = []
+    _tag_stack_var: ContextVar[list[str]] = ContextVar('tag_stack', default=[])
 
     def __init__(self, *tags: str, **kwtags: str) -> None:
         self._tags = [*tags]
@@ -45,15 +46,14 @@ class ErgoTagger:
 
             self.applied_tags.append(tag)
 
-        for tag in self.applied_tags:
-            ErgoTagger.tag_stack.append(tag)
+        current = self._tag_stack_var.get()
+        new_stack = current + self.applied_tags
+        self._token = self._tag_stack_var.set(new_stack)
 
         return self
 
     def __exit__(self, *_):
-        for tag in self.applied_tags:
-            ErgoTagger.tag_stack.remove(tag)
-
+        self._tag_stack_var.reset(self._token)
         self.applied_tags = []
 
 
@@ -140,7 +140,7 @@ class ErgoFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno, '')
         formatter = logging.Formatter(log_fmt)
 
-        record.tags = f'[{", ".join(ErgoTagger.tag_stack)}] ' if ErgoTagger.tag_stack else ''
+        record.tags = f'[{", ".join(ErgoTagger._tag_stack_var.get())}] ' if ErgoTagger._tag_stack_var.get() else ''
         return formatter.format(record)
 
 
