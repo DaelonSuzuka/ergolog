@@ -10,6 +10,8 @@ lode/
 ├── lode-map.md          # this file
 ├── core/
 │   └── summary.md       # core API & architecture details
+├── external/
+│   └── evlog.md         # evlog architecture analysis (TypeScript wide-event logging)
 ├── plans/               # roadmaps & TODOs (currently empty)
 └── tmp/                 # git-ignored session scraps
 ```

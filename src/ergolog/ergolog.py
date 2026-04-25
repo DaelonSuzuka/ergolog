@@ -117,6 +117,137 @@ class ErgoTimer:
             self.cb(f'{time() - self.start:.3f}')
 
 
+class ErgoEvent:
+    """Accumulate context for a wide event log.
+
+    Emits a single log line with all accumulated context + duration.
+    Can be used as a context manager (auto-emit on exit) or directly.
+
+    Usage as context manager (auto-emit on exit):
+        with eg.event() as e:
+            e.set(user='alice', cart={'items': 3})
+            # On exit: emits one log line with all context + duration
+
+    Usage as direct object (manual emit):
+        e = eg.event()
+        e.set(user='alice')
+        do_work()
+        e.emit()  # Explicit emit
+
+    After emit(), further calls to set() or emit() are ignored.
+    """
+
+    def __init__(self, logger: 'ErgoLog', **initial_context) -> None:
+        self._logger = logger
+        self._context = dict(initial_context)
+        self._start = time()
+        self._emitted = False
+        self._error: Optional[Exception] = None
+        self._level: int = logging.INFO
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None and not self._emitted:
+            self._error = exc_val
+            self._level = logging.ERROR
+        if not self._emitted:
+            self.emit()
+        return False  # Don't suppress exceptions
+
+    def set(self, **context) -> 'ErgoEvent':
+        """Add context to the event. Merges with existing context.
+
+        Returns self for chaining: e.set(x=1).set(y=2)
+        """
+        if self._emitted:
+            return self
+        self._context.update(context)
+        return self
+
+    def error(self, error: Exception, **context) -> 'ErgoEvent':
+        """Record an error. Sets level to ERROR.
+
+        Returns self for chaining.
+        """
+        if self._emitted:
+            return self
+        self._error = error
+        self._level = logging.ERROR
+        self._context.update(context)
+        return self
+
+    def emit(self, **override_context) -> None:
+        """Emit the wide event. Seals the event (further calls are no-ops)."""
+        if self._emitted:
+            return
+
+        self._emitted = True
+        duration_s = time() - self._start
+
+        # Merge override context
+        final_context = {**self._context, **override_context}
+
+        # Capture current tag stack if present
+        tag_stack = ErgoTagger._tag_stack_var.get()
+        if tag_stack:
+            tags_dict = {}
+            for tag in tag_stack:
+                if isinstance(tag, tuple):
+                    key, counter = tag
+                    tags_dict[key] = str(counter)
+                elif '=' in tag:
+                    key, val = tag.split('=', 1)
+                    tags_dict[key] = val
+                else:
+                    tags_dict[tag] = True
+            final_context['tags'] = tags_dict
+
+        # Include duration in the event context
+        final_context['duration_s'] = round(duration_s, 6)
+
+        # Build message for default formatter
+        parts = []
+        if self._error:
+            parts.append(f'{self._error.__class__.__name__}: {self._error}')
+        
+        # Format context for message
+        context_parts = []
+        for key, value in final_context.items():
+            if key == 'tags' or key == 'duration_s':
+                continue  # Tags already shown by formatter, duration at end
+            if isinstance(value, dict):
+                context_parts.append(f'{key}={value}')
+            else:
+                context_parts.append(f'{key}={value}')
+        
+        if context_parts:
+            parts.append(' '.join(context_parts))
+        
+        parts.append(f'duration={duration_s:.3f}s')
+
+        message = ' | '.join(parts)
+
+        # Attach context to the log record
+        extra = {
+            'event': final_context,
+            'duration': duration_s,
+        }
+
+        self._logger._logger.log(self._level, message, extra=extra)
+
+    @property
+    def context(self) -> dict:
+        """Get the current accumulated context (read-only snapshot)."""
+        return dict(self._context)
+
+    @property
+    def duration(self) -> float:
+        """Get elapsed time in seconds since event creation."""
+        return time() - self._start
+
+
 # --------------------------------------------------------------------------- #
 
 
@@ -186,6 +317,83 @@ class ErgoFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno, '')
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+
+
+class ErgoJSONFormatter(logging.Formatter):
+    """Structured JSON formatter for logs.
+
+    Outputs each log as a JSON object on a single line (JSONL/NDJSON).
+    Useful for log aggregation systems, agent parsing with jq, etc.
+
+    Includes:
+        - timestamp (ISO 8601)
+        - level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        - name (logger name)
+        - message
+        - tags (dict of tag key: value)
+        - event (wide event context if present)
+        - duration (seconds if timed operation)
+        - file, line, function for debugging, error objects, and any event context. Defaults to '%(asctime)s'.
+
+    Example:
+        logging.config.dictConfig({
+            'formatters': {
+                'json': {'()': ErgoJSONFormatter},
+            },
+            'handlers': {
+                'default': {
+                    'formatter': 'json',
+                    ...
+                },
+            },
+        })
+    """
+
+    def __init__(self, fmt=None, datefmt=None, style='%'):
+        super().__init__(fmt=fmt, datefmt=datefmt, style=style)
+
+    def format(self, record):
+        import json
+        from datetime import datetime, timezone
+
+        obj = {
+            'timestamp': datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            'level': record.levelname,
+            'name': record.name,
+            'message': record.getMessage(),
+        }
+
+        # Include tags if present
+        if hasattr(record, 'tag_list') and record.tag_list:
+            tags_dict = {}
+            for tag in record.tag_list:
+                if '=' in tag:
+                    key, val = tag.split('=', 1)
+                    tags_dict[key] = val
+                else:
+                    tags_dict[tag] = True
+            obj['tags'] = tags_dict
+
+        # Include event context if present (wide events)
+        if hasattr(record, 'event') and record.event:
+            obj['event'] = record.event
+
+        # Include duration if present (timers/events)
+        if hasattr(record, 'duration') and record.duration is not None:
+            obj['duration_s'] = round(record.duration, 6)
+
+        # Include error info if present
+        if record.exc_info:
+            obj['error'] = self.formatException(record.exc_info)
+
+        # Include location
+        obj['location'] = {
+            'file': record.filename,
+            'line': record.lineno,
+            'function': record.funcName,
+        }
+
+        return json.dumps(obj, separators=(',', ':'))
 
 
 config = {
@@ -268,6 +476,30 @@ class ErgoLog(logging.Logger):
     def timer(self, cb: Optional[Callable[[str], None]] = None):
         """Create a timer"""
         return ErgoTimer(cb)
+
+    def event(self, **initial_context) -> ErgoEvent:
+        """Create a wide event accumulator.
+
+        Accumulates context throughout a scope and emits a single log line.
+        Can be used as a context manager (auto-emit on exit) or directly.
+
+        Args:
+            **initial_context: Initial context to include in the event.
+
+        Returns:
+            ErgoEvent instance.
+
+        Example:
+            with eg.event(user='alice') as e:
+                e.set(cart={'items': 3})
+                # On exit: emits one log line with all context + duration
+
+            # Or manually:
+            e = eg.event(user='alice')
+            e.set(cart={'items': 3})
+            e.emit()
+        """
+        return ErgoEvent(self, **initial_context)
 
     @staticmethod
     def uid():
@@ -435,3 +667,39 @@ if __name__ == '__main__':
     with eg.tag(i=loops):
         for item in loops.count(['a', 'b', 'c']):
             eg.info(f'item {item}')
+
+    line()
+
+    # Wide event examples
+    print('\n--- Wide Events ---\n')
+
+    # Context manager (auto-emit on exit)
+    with eg.event(user='alice', action='checkout') as e:
+        e.set(cart={'items': 3, 'total': 9999})
+        e.set(payment={'method': 'card'})
+        # Auto-emits on exit with duration
+
+    print()  # Spacing
+
+    # Manual emit
+    e = eg.event(user='bob', action='search')
+    e.set(query='ergonomics', results=42)
+    e.emit()
+
+    print()  # Spacing
+
+    # Event with error
+    try:
+        with eg.event(user='charlie', action='failing_op') as e:
+            e.set(step='processing')
+            raise ValueError('Something went wrong')
+    except ValueError:
+        pass  # Exception logged by event exit
+
+    print()  # Spacing
+
+    # Event capturing tags
+    with eg.tag(request_id='abc123'):
+        with eg.event(operation='tagged_op') as e:
+            e.set(extra='data')
+            # Tags from context are captured in the event
