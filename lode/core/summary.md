@@ -35,6 +35,7 @@ classDiagram
         -_level: int
         +set(**context) ErgoEvent
         +error(err, **context) ErgoEvent
+        +warn(message?, **context) ErgoEvent
         +emit(**override) void
         +context: dict (property)
         +duration: float (property)
@@ -55,7 +56,13 @@ classDiagram
     class ErgoTimer {
         -start: float
         -cb: Callable
+        -_laps: dict~str, float~
+        +elapsed: float (property)
+        +lap(name?) float
+        +laps: dict~str, float~ (property)
         +__repr__() str
+        +__str__() str
+        +__float__() float
         +__enter__()
         +__exit__()
         +__call__(wrapped) decorator
@@ -106,6 +113,7 @@ classDiagram
 - Captures duration automatically in `event['duration_s']`
 - Captures current tag stack at emit time in `event['tags']`
 - Errors can be recorded via `e.error(err, **context)` — sets level to ERROR
+- `e.warn(message?, **context)` — sets level to WARNING, optionally records a warning message and context
 - After `emit()`, further `set()` calls are ignored (sealed)
 - Works with `ErgoJSONFormatter` for structured JSONL output
 
@@ -123,8 +131,26 @@ classDiagram
 - `ErgoCounter` objects are stored as `tuple(key, counter)` on the tag stack; the filter formats them at log time
 
 ### Timer
-- Can be used as context manager (access elapsed via `repr(timer)`) or decorator
+- Can be used as context manager or decorator
 - Optional callback receives formatted elapsed string
+- `.elapsed` property returns current elapsed time as float
+- `.lap()` returns current elapsed as float without stopping the timer
+- `.lap('name')` returns elapsed AND records a named lap in `_laps` dict
+- `.laps` property returns a (copy) dict of named laps: `{name: elapsed_float}`
+- Re-entering a timer context resets `_laps`
+- Usable as tag value: `with eg.tag(elapsed=t)` — shows dynamic elapsed per log line (e.g. `[elapsed=0.123s]`)
+- Usable as event value: `e.set(duration=t)` — resolves to total elapsed at emit time
+- When timer is an event value, its named laps are auto-collected into the event context
+
+### Composability (Events + Counters + Timers)
+- Counters and timers passed to `e.set()` are stored by reference, evaluated at emit time
+- Counter in event: `e.set(count=counter)` → event shows `counter._value` at emit time
+- Timer in event: `e.set(duration=t)` → event shows `t.elapsed` at emit time
+- Named laps auto-collected: if timer has `_laps`, they're merged into the event context
+- `e.set(fetch=t.lap())` also works for explicit control — `t.lap()` returns a float, not a timer reference
+- Explicit lap values (floats) are stored as plain values; they don't trigger auto-lap collection
+
+### Wide Events (ErgoEvent)
 
 ### Trace Decorator
 - Logs function name and timing by default (safe for production)
@@ -149,3 +175,5 @@ classDiagram
 - Color output is all-or-nothing per process (env var check at import time)
 - `ErgoEvent` emits exactly once; after `emit()` the event is sealed and further `set()` calls are ignored
 - Wide events capture tag stack at emit time, not at creation time
+- Counters and timers in events are stored by reference and evaluated at emit time (live values)
+- Named laps on timers in events are auto-collected into event context at emit time

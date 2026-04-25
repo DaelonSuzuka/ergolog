@@ -23,6 +23,8 @@ lode/
 - `test/test_threading.py` — thread-safety tests (contextvars)
 - `test/test_exceptions.py` — exception cleanup tests
 - `test/test_counter.py` — ErgoCounter tests
+- `test/test_event.py` — ErgoEvent wide event tests
+- `test/test_composition.py` — composability tests (counters/timers in tags & events, timer laps)
 - `test/main.py` — manual/demo script
 - `.github/workflows/ci.yml` — CI (Python 3.9–3.13)
 - `pyproject.toml` — project metadata, ruff config, dev deps

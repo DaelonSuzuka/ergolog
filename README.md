@@ -228,6 +228,48 @@ eg.debug(f'took {t} S')
 15:30:01,235 [DEBUG   ] ergo (main.py:5) took 0.123 S
 ```
 
+### Laps
+
+Use `.lap()` to take split times without stopping the timer. Returns elapsed seconds as a float:
+
+```py
+with eg.timer() as t:
+    fetch_data()
+    fetch_time = t.lap()      # returns float, timer keeps running
+    process_data()
+    process_time = t.lap()    # returns float from start
+    eg.debug(f'fetch={fetch_time:.3f}s process={process_time:.3f}s total={t.elapsed:.3f}s')
+```
+
+```
+15:30:01,235 [DEBUG   ] ergo (main.py:6) fetch=0.103s process=0.456s total=0.456s
+```
+
+Use `.lap('name')` to record named laps — these are auto-collected by events:
+
+```py
+with eg.timer() as t:
+    fetch_data()
+    t.lap('fetch')       # records lap name + time
+    process_data()
+    t.lap('process')     # records lap name + time
+    # t.laps == {'fetch': 0.103, 'process': 0.456}
+```
+
+### Timers as Tag Values
+
+Timers can be used as keyword tag values, showing live elapsed time on each log line:
+
+```py
+t = eg.timer()
+with eg.tag(elapsed=t):
+    eg.info('start')        # [elapsed=0.000s]
+    sleep(0.1)
+    eg.info('middle')       # [elapsed=0.100s]
+    sleep(0.1)
+    eg.info('end')           # [elapsed=0.200s]
+```
+
 ## Trace
 
 ```py
@@ -347,6 +389,76 @@ with eg.tag(request_id='abc123'):
     e.set(extra='data')
     e.emit()
 # Event includes: {'tags': {'request_id': 'abc123'}, 'operation': 'tagged', ...}
+```
+
+### Counters in Events
+
+Counters passed to `e.set()` evaluate at emit time — the event shows their final value:
+
+```py
+counter = eg.counter()
+with eg.event(op='batch') as e:
+    e.set(processed=counter)
+    for item in items:
+        process(item)
+        counter += 1
+# Event shows: processed=5 (or whatever the final count is)
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:7) op=batch processed=5 | duration=0.034s
+```
+
+### Timers in Events
+
+Timers passed to `e.set()` evaluate at emit time — the event shows total elapsed:
+
+```py
+t = eg.timer()
+with eg.event(op='export') as e:
+    e.set(duration=t)
+    export_data()
+# Event shows: duration=1.234 (total elapsed)
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:4) op=export duration=1.234 | duration=1.234s
+```
+
+### Named Laps in Events
+
+Named laps on timers are auto-collected into events. This is the killer feature for multi-stage operations:
+
+```py
+t = eg.timer()
+with eg.event(op='pipeline') as e:
+    e.set(duration=t)
+    fetch_data()
+    t.lap('fetch')
+    process_data()
+    t.lap('process')
+    save_results()
+    t.lap('save')
+# Event includes: duration=0.789 fetch=0.101 process=0.456 save=0.232
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:9) op=pipeline duration=0.789 fetch=0.101 process=0.456 save=0.232 | duration=0.789s
+```
+
+You can also set lap values explicitly for full control:
+
+```py
+with eg.event(op='task') as e:
+    t = eg.timer()
+    fetch_data()
+    e.set(fetch_time=t.lap())
+    process_data()
+    e.set(process_time=t.lap())
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:6) op=task fetch_time=0.101 process_time=0.456 | duration=0.456s
 ```
 
 ### When to Use Events vs Regular Logs

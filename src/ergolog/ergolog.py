@@ -54,9 +54,9 @@ class ErgoCounter:
 
 
 class ErgoTagger:
-    _tag_stack_var: ContextVar[list[str]] = ContextVar('tag_stack', default=[])
+    _tag_stack_var: ContextVar[list] = ContextVar('tag_stack', default=[])
 
-    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str], 'ErgoCounter']) -> None:
+    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str], 'ErgoCounter', 'ErgoTimer']) -> None:
         self._tags = [*tags]
         self._kwtags = kwtags
 
@@ -75,7 +75,7 @@ class ErgoTagger:
         self.applied_tags = [*self._tags]
 
         for k, v in self._kwtags.items():
-            if isinstance(v, ErgoCounter):
+            if isinstance(v, (ErgoCounter, ErgoTimer)):
                 self.applied_tags.append((k, v))
             else:
                 self.applied_tags.append(f'{k}={v()}' if callable(v) else f'{k}={v}')
@@ -92,9 +92,41 @@ class ErgoTagger:
 
 
 class ErgoTimer:
-    def __init__(self, cb: Optional[Callable[[str], None]]) -> None:
+    """A timer that tracks elapsed wall-clock time.
+
+    Supports named laps for marking stages of an operation.
+    Can be used as a context manager, decorator, tag value, or event value.
+
+    Usage:
+        # Context manager with laps
+        with eg.timer() as t:
+            fetch_data()
+            t.lap('fetch')       # records named lap, returns elapsed float
+            process_data()
+            t.lap('process')
+            # t.elapsed -> total, t.laps -> {'fetch': 0.123, 'process': 0.456}
+
+        # As tag value (dynamic elapsed per log line)
+        t = eg.timer()
+        with eg.tag(elapsed=t):
+            eg.info('step 1')    # [elapsed=0.100]
+            sleep(0.1)
+            eg.info('step 2')    # [elapsed=0.200]
+
+        # As event value (elapsed + named laps at emit time)
+        with eg.event(op='task') as e:
+            t = eg.timer()
+            e.set(duration=t)
+            fetch_data()
+            t.lap('fetch')
+            process_data()
+            t.lap('process')
+    """
+
+    def __init__(self, cb: Optional[Callable[[str], None]] = None) -> None:
         self.start = time()
         self.cb = cb
+        self._laps: dict[str, float] = {}
 
     def __call__(self, wrapped):
         """decorator"""
@@ -106,15 +138,49 @@ class ErgoTimer:
         return wrapper
 
     def __repr__(self):
-        return f'{time() - self.start:.3f}'
+        return f'{self.elapsed:.3f}'
+
+    def __str__(self):
+        return f'{self.elapsed:.3f}'
+
+    def __float__(self):
+        return self.elapsed
 
     def __enter__(self, *_):
         self.start = time()
+        self._laps = {}
         return self
 
     def __exit__(self, *_):
         if self.cb is not None:
-            self.cb(f'{time() - self.start:.3f}')
+            self.cb(f'{self.elapsed:.3f}')
+
+    @property
+    def elapsed(self) -> float:
+        """Current elapsed time in seconds (always fresh)."""
+        return time() - self.start
+
+    def lap(self, name: Optional[str] = None) -> float:
+        """Return current elapsed time without stopping the timer.
+
+        If a name is given, the lap is recorded and will be included
+        in the timer's laps dict, and auto-collected by events.
+
+        Args:
+            name: Optional name for this lap (e.g. 'fetch', 'process').
+
+        Returns:
+            Elapsed time in seconds as a float.
+        """
+        elapsed = self.elapsed
+        if name is not None:
+            self._laps[name] = elapsed
+        return elapsed
+
+    @property
+    def laps(self) -> dict[str, float]:
+        """Dictionary of named lap times (elapsed seconds from start)."""
+        return dict(self._laps)
 
 
 class ErgoEvent:
@@ -123,16 +189,25 @@ class ErgoEvent:
     Emits a single log line with all accumulated context + duration.
     Can be used as a context manager (auto-emit on exit) or directly.
 
+    Counters and timers passed to set() are evaluated at emit time,
+    showing their live values. Named laps on timers are auto-collected.
+
     Usage as context manager (auto-emit on exit):
-        with eg.event() as e:
-            e.set(user='alice', cart={'items': 3})
+        with eg.event(user='alice') as e:
+            e.set(cart={'items': 3, 'total': 9999})
             # On exit: emits one log line with all context + duration
 
-    Usage as direct object (manual emit):
-        e = eg.event()
-        e.set(user='alice')
-        do_work()
-        e.emit()  # Explicit emit
+    Usage with counters and timers:
+        with eg.event(op='export') as e:
+            counter = eg.counter()
+            t = eg.timer()
+            e.set(pages=counter, duration=t)
+            for page in pages:
+                process(page)
+                counter += 1
+                t.lap(f'page_{counter}')
+            # Event includes: pages=<final count>, duration=<final elapsed>,
+            #                  page_1=<lap1>, page_2=<lap2>, ...
 
     After emit(), further calls to set() or emit() are ignored.
     """
@@ -159,6 +234,11 @@ class ErgoEvent:
     def set(self, **context) -> 'ErgoEvent':
         """Add context to the event. Merges with existing context.
 
+        ErgoCounter and ErgoTimer values are stored by reference and
+        evaluated at emit time (showing their current/live values).
+
+        Named laps on timers are auto-collected into the event at emit time.
+
         Returns self for chaining: e.set(x=1).set(y=2)
         """
         if self._emitted:
@@ -178,6 +258,53 @@ class ErgoEvent:
         self._context.update(context)
         return self
 
+    def warn(self, message: Optional[str] = None, **context) -> 'ErgoEvent':
+        """Set the event level to WARNING.
+
+        Optionally provide a message and additional context.
+
+        Returns self for chaining.
+        """
+        if self._emitted:
+            return self
+        self._level = logging.WARNING
+        if message:
+            self._context['warning'] = message
+        self._context.update(context)
+        return self
+
+    @staticmethod
+    def _resolve_value(value):
+        """Resolve a value at emit time. Counters and timers evaluate live."""
+        if isinstance(value, ErgoCounter):
+            return value._value
+        if isinstance(value, ErgoTimer):
+            return value.elapsed
+        return value
+
+    def _resolve_context(self) -> dict:
+        """Build the final context dict, resolving live values and collecting laps."""
+        resolved = {}
+        timer_laps = {}
+
+        for key, value in self._context.items():
+            if isinstance(value, ErgoTimer):
+                resolved[key] = round(value.elapsed, 6)
+                # Auto-collect named laps from this timer
+                if value._laps:
+                    timer_laps.update(value._laps)
+            elif isinstance(value, ErgoCounter):
+                resolved[key] = value._value
+            else:
+                resolved[key] = value
+
+        # Merge named laps into context (timer laps take precedence if collision)
+        for lap_name, lap_time in timer_laps.items():
+            if lap_name not in resolved:
+                resolved[lap_name] = round(lap_time, 6)
+
+        return resolved
+
     def emit(self, **override_context) -> None:
         """Emit the wide event. Seals the event (further calls are no-ops)."""
         if self._emitted:
@@ -186,8 +313,12 @@ class ErgoEvent:
         self._emitted = True
         duration_s = time() - self._start
 
-        # Merge override context
-        final_context = {**self._context, **override_context}
+        # Resolve live values (counters, timers) and collect laps
+        final_context = self._resolve_context()
+
+        # Merge override context (also resolve live values)
+        for key, value in override_context.items():
+            final_context[key] = self._resolve_value(value)
 
         # Capture current tag stack if present
         tag_stack = ErgoTagger._tag_stack_var.get()
@@ -195,8 +326,11 @@ class ErgoEvent:
             tags_dict = {}
             for tag in tag_stack:
                 if isinstance(tag, tuple):
-                    key, counter = tag
-                    tags_dict[key] = str(counter)
+                    key, value = tag
+                    if isinstance(value, ErgoTimer):
+                        tags_dict[key] = f'{value.elapsed:.3f}s'
+                    else:
+                        tags_dict[key] = str(value)
                 elif '=' in tag:
                     key, val = tag.split('=', 1)
                     tags_dict[key] = val
@@ -211,20 +345,17 @@ class ErgoEvent:
         parts = []
         if self._error:
             parts.append(f'{self._error.__class__.__name__}: {self._error}')
-        
+
         # Format context for message
         context_parts = []
         for key, value in final_context.items():
             if key == 'tags' or key == 'duration_s':
                 continue  # Tags already shown by formatter, duration at end
-            if isinstance(value, dict):
-                context_parts.append(f'{key}={value}')
-            else:
-                context_parts.append(f'{key}={value}')
-        
+            context_parts.append(f'{key}={value}')
+
         if context_parts:
             parts.append(' '.join(context_parts))
-        
+
         parts.append(f'duration={duration_s:.3f}s')
 
         message = ' | '.join(parts)
@@ -289,8 +420,11 @@ class ErgoTagFilter(logging.Filter):
         tag_list = []
         for tag in stack:
             if isinstance(tag, tuple):
-                key, counter = tag
-                s = f'{key}={counter}'
+                key, value = tag
+                if isinstance(value, ErgoTimer):
+                    s = f'{key}={value.elapsed:.3f}s'
+                else:
+                    s = f'{key}={value}'
                 tag_strings.append(s)
                 tag_list.append(s)
             else:
@@ -469,7 +603,7 @@ class ErgoLog(logging.Logger):
 
         return ErgoLog._loggers[name]
 
-    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str], ErgoCounter]):
+    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str], ErgoCounter, ErgoTimer]):
         """apply ergolog tags"""
         return ErgoTagger(*tags, **kwargs)
 
