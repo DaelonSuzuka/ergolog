@@ -1,4 +1,4 @@
-from .ergolog import eg, config, ErgoCounter, ErgoEvent, ErgoJSONFormatter
+from .ergolog import eg, ErgoConfig, ErgoCounter, ErgoEvent, ErgoFormatter, ErgoJSONFormatter
 
 
-__all__ = ['eg', 'config', 'ErgoCounter', 'ErgoEvent', 'ErgoJSONFormatter']
+__all__ = ['eg', 'ErgoConfig', 'ErgoCounter', 'ErgoEvent', 'ErgoFormatter', 'ErgoJSONFormatter']

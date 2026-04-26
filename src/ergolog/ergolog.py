@@ -1,7 +1,7 @@
 import logging
 import os
+import sys
 from contextvars import ContextVar
-from logging.config import dictConfig
 from time import time
 from typing import Callable, Optional, Union, List, Tuple, Any
 from uuid import uuid4
@@ -12,6 +12,7 @@ from uuid import uuid4
 NO_COLORS = os.environ.get('ERGOLOG_NO_COLORS', None)
 NO_TIME = os.environ.get('ERGOLOG_NO_TIME', None)
 DEFAULT_LOGGER = os.environ.get('ERGOLOG_DEFAULT_LOGGER', 'ergo')
+NO_AUTO_SETUP = os.environ.get('ERGOLOG_NO_AUTO_SETUP', None)
 
 
 # --------------------------------------------------------------------------- #
@@ -323,7 +324,7 @@ class ErgoEvent:
         # Capture current tag stack if present
         tag_stack = ErgoTagger._tag_stack_var.get()
         if tag_stack:
-            tags_dict = {}
+            tags_dict: dict[str, Any] = {}
             for tag in tag_stack:
                 if isinstance(tag, tuple):
                     key, value = tag
@@ -533,38 +534,154 @@ class ErgoJSONFormatter(logging.Formatter):
         return json.dumps(obj, separators=(',', ':'))
 
 
-config = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'filters': {
-        'tags': {
-            '()': ErgoTagFilter,
-        },
-    },
-    'formatters': {
-        'default': {
-            '()': ErgoFormatter,
-        },
-    },
-    'handlers': {
-        'default': {
-            'filters': ['tags'],
-            'formatter': 'default',
-            'class': 'logging.StreamHandler',
-            'stream': 'ext://sys.stdout',
-        }
-    },
-    'loggers': {
-        DEFAULT_LOGGER: {
-            'handlers': ['default'],
-            'level': 'DEBUG',
-            'propagate': True,
-        },
-    },
-}
+class ErgoConfig:
+    """Runtime configuration for ergolog.
 
-if not logging.getLogger(DEFAULT_LOGGER).handlers:
-    dictConfig(config)
+    Provides a clean API for managing logging handlers, formatters, and levels.
+    Use eg.config.add_output() to add handlers, eg.config.set_format() to change
+    formatters, etc.
+
+    The old module-level config dict is replaced by this class — dictConfig
+    internals are no longer exposed.
+    """
+
+    VALID_FORMATS = ('default', 'plain', 'json')
+    VALID_OUTPUTS = ('stdout', 'stderr', 'file')
+
+    def __init__(self, logger_name: str = DEFAULT_LOGGER):
+        self._logger_name = logger_name
+        self._logger = logging.getLogger(logger_name)
+        self._tag_filter = ErgoTagFilter()
+
+    def _make_formatter(self, format: str) -> logging.Formatter:
+        """Create a formatter instance for the given format name."""
+        if format == 'json':
+            return ErgoJSONFormatter()
+        return ErgoFormatter()
+
+    def _make_handler(self, kind: str, format: str = 'default',
+                      path: Optional[str] = None,
+                      level: Optional[str] = None) -> logging.Handler:
+        """Create and configure a logging handler."""
+        handler: logging.Handler
+        if kind == 'file':
+            handler = logging.FileHandler(path or 'ergolog.jsonl', mode='a')
+        elif kind == 'stderr':
+            handler = logging.StreamHandler(sys.stderr)
+        else:
+            handler = logging.StreamHandler(sys.stdout)
+
+        handler.setFormatter(self._make_formatter(format))
+        handler.addFilter(self._tag_filter)
+
+        if level:
+            handler.setLevel(getattr(logging, level.upper()))
+
+        handler._ergolog_name = kind if kind != 'file' else f'file_{path}'  # type: ignore[union-attr]
+        handler._ergolog_format = format  # type: ignore[union-attr]
+        return handler
+
+    def auto_setup(self) -> None:
+        """Apply default configuration if not already configured.
+
+        Called automatically on import unless ERGOLOG_NO_AUTO_SETUP is set.
+        Safe to call multiple times — won't duplicate handlers.
+        """
+        if self._logger.handlers:
+            return
+        self.add_output('stdout', format='default')
+
+    def add_output(self, kind: str = 'stdout', *, path: Optional[str] = None,
+                   format: str = 'default', level: Optional[str] = None) -> None:
+        """Add a logging output handler.
+
+        Args:
+            kind: Output destination — 'stdout', 'stderr', or 'file'.
+            path: File path (required when kind='file').
+            format: Formatter — 'default' (colored), 'plain' (no ANSI), or 'json'.
+            level: Optional log level for this handler (e.g. 'WARNING').
+                   Defaults to the logger's current level.
+        """
+        if kind not in self.VALID_OUTPUTS:
+            raise ValueError(f"Invalid output kind '{kind}'. Must be one of: {self.VALID_OUTPUTS}")
+        if format not in self.VALID_FORMATS:
+            raise ValueError(f"Invalid format '{format}'. Must be one of: {self.VALID_FORMATS}")
+
+        # For 'plain' format, create the handler with ErgoFormatter (NO_COLORS
+        # is already set globally if the user requested it via env var).
+        # Plain just means "default formatter without ANSI codes" — which is
+        # exactly what happens when NO_COLORS is set.
+        effective_format = 'default' if format == 'plain' else format
+
+        # Remove existing handler with the same name if present
+        handler_name = kind if kind != 'file' else f'file_{path}'
+        for existing_handler in self._logger.handlers[:]:
+            if hasattr(existing_handler, '_ergolog_name') and existing_handler._ergolog_name == handler_name:  # type: ignore[attr-defined]
+                existing_handler.close()
+                self._logger.removeHandler(existing_handler)
+
+        handler = self._make_handler(kind, format=effective_format, path=path, level=level)
+        self._logger.addHandler(handler)
+
+        # Ensure the logger level allows messages through
+        if not self._logger.level or self._logger.level == logging.NOTSET:
+            self._logger.setLevel(logging.DEBUG)
+
+    def remove_output(self, kind: str, *, path: Optional[str] = None) -> None:
+        """Remove a logging output handler.
+
+        Args:
+            kind: Output kind — 'stdout', 'stderr', or 'file'.
+            path: File path (used to identify which file handler when kind='file').
+        """
+        handler_name = kind if kind != 'file' else f'file_{path}'
+        for handler in self._logger.handlers[:]:
+            if hasattr(handler, '_ergolog_name') and handler._ergolog_name == handler_name:  # type: ignore[attr-defined]
+                handler.close()
+                self._logger.removeHandler(handler)
+                return
+
+    def set_format(self, format: str, kind: str = 'stdout', path: Optional[str] = None) -> None:
+        """Change the formatter on an existing handler.
+
+        Args:
+            format: Formatter — 'default' (colored), 'plain' (no ANSI), or 'json'.
+            kind: Which output to change — 'stdout', 'stderr', or 'file'.
+            path: File path (required when kind='file' to identify which file handler).
+        """
+        if format not in self.VALID_FORMATS:
+            raise ValueError(f"Invalid format '{format}'. Must be one of: {self.VALID_FORMATS}")
+
+        effective_format = 'default' if format == 'plain' else format
+        handler_name = kind if kind != 'file' else f'file_{path}'
+        for handler in self._logger.handlers:
+            if hasattr(handler, '_ergolog_name') and handler._ergolog_name == handler_name:  # type: ignore[attr-defined]
+                handler.setFormatter(self._make_formatter(effective_format))
+                handler._ergolog_format = effective_format  # type: ignore[attr-defined]
+                return
+
+    def set_level(self, level: str) -> None:
+        """Set the log level on the ergolog logger.
+
+        Args:
+            level: Log level — 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
+        """
+        self._logger.setLevel(getattr(logging, level.upper()))
+
+    def set_propagate(self, propagate: bool) -> None:
+        """Set whether ergolog messages propagate to the root logger.
+
+        Args:
+            propagate: True to propagate (default), False to prevent double-logging
+                       in framework contexts.
+        """
+        self._logger.propagate = propagate
+
+
+# Auto-configure on import unless suppressed
+_config = ErgoConfig()
+if not NO_AUTO_SETUP:
+    _config.auto_setup()
 
 
 # *************************************************************************** #
@@ -576,13 +693,14 @@ class ErgoLog(logging.Logger):
     def __init__(self, name=DEFAULT_LOGGER) -> None:
         self._name = name
         self._logger = logging.getLogger(name)
+        self.config = _config
 
         # avoid the extra function calls from __getattr__
-        self.debug = self._logger.debug
-        self.info = self._logger.info
-        self.warning = self._logger.warning
-        self.error = self._logger.error
-        self.critical = self._logger.critical
+        self.debug = self._logger.debug       # type: ignore[assignment]
+        self.info = self._logger.info         # type: ignore[assignment]
+        self.warning = self._logger.warning   # type: ignore[assignment]
+        self.error = self._logger.error       # type: ignore[assignment]
+        self.critical = self._logger.critical # type: ignore[assignment]
 
     def __getattr__(self, name: str):
         try:

@@ -9,7 +9,7 @@ classDiagram
     class ErgoLog {
         -_name: str
         -_logger: Logger
-        _loggers: dict~str, ErgoLog~
+        +config: ErgoConfig
         +debug/info/warning/error/critical
         +__call__(name) ErgoLog
         +getLogger(name) ErgoLog
@@ -17,11 +17,27 @@ classDiagram
         +timer(cb?) ErgoTimer
         +event(**context) ErgoEvent
         +trace(func) wrapper
+        +uid() str
+        +counter() ErgoCounter
+    }
+    class ErgoConfig {
+        +VALID_FORMATS: tuple
+        +VALID_OUTPUTS: tuple
+        -_logger_name: str
+        -_logger: Logger
+        -_tag_filter: ErgoTagFilter
+        +add_output(kind, path?, format?, level?)
+        +remove_output(kind, path?)
+        +set_format(format, kind?, path?)
+        +set_level(level)
+        +set_propagate(propagate)
+        +auto_setup()
     }
     class ErgoTagger {
         _tag_stack_var: ContextVar
         -_tags: list~str~
-        +applied_tags: list~str~
+        -_kwtags: dict
+        +applied_tags: List~Union~str, Tuple~str, Any~~
         +__enter__()
         +__exit__()
         +__call__(wrapped) decorator
@@ -68,7 +84,6 @@ classDiagram
         +__call__(wrapped) decorator
     }
     class ErgoFormatter {
-        +FORMATS: dict
         +format(record) str
     }
     class ErgoJSONFormatter {
@@ -79,6 +94,7 @@ classDiagram
         +dim(text) str
         +apply(text, style) str
     }
+    ErgoLog --> ErgoConfig : config
     ErgoLog --> ErgoTagger : creates via .tag()
     ErgoLog --> ErgoTimer : creates via .timer()
     ErgoLog --> ErgoEvent : creates via .event()
@@ -86,6 +102,9 @@ classDiagram
     ErgoTagFilter --> ErgoTagger : reads _tag_stack_var
     ErgoFormatter --> C : uses for styling
     ErgoJSONFormatter --> ErgoEvent : formats event context
+    ErgoConfig --> ErgoTagFilter : attaches to handlers
+    ErgoConfig --> ErgoFormatter : creates formatters
+    ErgoConfig --> ErgoJSONFormatter : creates formatters
 ```
 
 ## Key Behaviors
@@ -107,6 +126,10 @@ classDiagram
 - The `set()/reset()` pattern eliminates `list.remove()` corruption bugs that occurred with a shared mutable list
 
 ### Wide Events (ErgoEvent)
+- Not thread-safe — `_context` is a plain `dict` with no locking
+- This is by design: events are born, populated, and emitted within a single scope/thread
+- The wide-event pattern (`with eg.event(...) as e:`) is inherently single-threaded — you accumulate context for one operation and emit at the end
+- Tags provide the cross-thread/cross-async safety story (`contextvars`); events don't need to because they're never shared
 - `eg.event(**context)` creates an accumulator for wide event logging
 - Accumulates context via `e.set(**context)` until `emit()` is called
 - Can be used as context manager (auto-emit on exit) or manually (`e.emit()`)
@@ -114,14 +137,30 @@ classDiagram
 - Captures current tag stack at emit time in `event['tags']`
 - Errors can be recorded via `e.error(err, **context)` — sets level to ERROR
 - `e.warn(message?, **context)` — sets level to WARNING, optionally records a warning message and context
-- After `emit()`, further `set()` calls are ignored (sealed)
+- After `emit()`, further calls to `set()` are ignored (sealed)
 - Works with `ErgoJSONFormatter` for structured JSONL output
 
-### Config
-- `config` dict is exposed as `from ergolog import config` — modifiable before setup
-- `dictConfig(config)` only fires on import if the default logger has no existing handlers
-- Applications that configure logging before importing ergolog won't get stomped on
-- `ErgoTagFilter` is registered in `config['handlers']['default']['filters']` — custom handlers that want tags should include it
+### Config (ErgoConfig)
+- `eg.config` is an `ErgoConfig` instance attached to the `ErgoLog` singleton
+- Replaces the old module-level `config` dict (which was a dead letter after import)
+- `dictConfig` is no longer exposed — `ErgoConfig` manages handlers directly
+- **Auto-setup on import**: adds a stdout handler with `ErgoFormatter` unless `ERGOLOG_NO_AUTO_SETUP=1` or the logger already has handlers
+- **Env vars** (all "emergency brake" style — prevent something):
+  - `ERGOLOG_NO_COLORS` — strip ANSI output
+  - `ERGOLOG_NO_TIME` — strip timestamps
+  - `ERGOLOG_NO_AUTO_SETUP` — don't configure any handlers on import
+- **Python API**:
+  - `eg.config.add_output(kind, path?, format?, level?)` — add a handler (stdout, stderr, file)
+  - `eg.config.remove_output(kind, path?)` — remove a handler
+  - `eg.config.set_format(format, kind?, path?)` — change formatter on a handler
+  - `eg.config.set_level(level)` — change log level
+  - `eg.config.set_propagate(bool)` — control propagation to root logger
+- **Valid formats**: `'default'` (colored), `'plain'` (no ANSI), `'json'` (JSONL)
+- **Valid outputs**: `'stdout'`, `'stderr'`, `'file'`
+- File output always uses append mode
+- Calling `add_output()` with the same kind replaces the existing handler
+- `ErgoTagFilter` is attached to every handler created by `ErgoConfig`
+- Both formatters are always available — `set_format('json')` swaps without recreating the handler
 
 ### Counter/Accumulator
 - `eg.counter()` creates an `ErgoCounter` instance (starts at 0)
@@ -150,8 +189,6 @@ classDiagram
 - `e.set(fetch=t.lap())` also works for explicit control — `t.lap()` returns a float, not a timer reference
 - Explicit lap values (floats) are stored as plain values; they don't trigger auto-lap collection
 
-### Wide Events (ErgoEvent)
-
 ### Trace Decorator
 - Logs function name and timing by default (safe for production)
 - `@eg.trace(log_args=True)` opts into logging arguments and return values (for local debugging only)
@@ -164,16 +201,19 @@ classDiagram
 - Includes: `timestamp`, `level`, `name`, `message`, `tags`, `event`, `duration_s`, `location`
 - For wide events, `event` contains the full accumulated context
 - For regular logs, `tags` contains the tag stack as a dict
-- Usage: configure in `dictConfig` with `'formatter': 'json'` where `'()': ErgoJSONFormatter`
+- Usage: `eg.config.add_output('stdout', format='json')` or `eg.config.set_format('json')`
 
 ## Invariants
 - `ErgoLog._loggers` key is always the fully-qualified logger name (e.g. `ergo.sub`)
 - Tag stacks are context-isolated via `contextvars.ContextVar` — no cross-thread or cross-task leakage
 - `set()/reset(token)` ensures tags are always cleaned up on context exit, even on exceptions
 - `ErgoTagFilter` must be present on any handler that needs `record.tags` — custom configs must include it
-- `dictConfig` only runs on import if the default logger has no existing handlers
+- `ErgoConfig` attaches `ErgoTagFilter` to every handler it creates
 - Color output is all-or-nothing per process (env var check at import time)
 - `ErgoEvent` emits exactly once; after `emit()` the event is sealed and further `set()` calls are ignored
 - Wide events capture tag stack at emit time, not at creation time
 - Counters and timers in events are stored by reference and evaluated at emit time (live values)
 - Named laps on timers in events are auto-collected into event context at emit time
+- `ErgoEvent._context` is a plain dict — events are single-threaded by design (born/populated/emit within one scope)
+- `ErgoConfig.add_output()` creates handlers via Python `logging` API directly, not via `dictConfig` — no destructive reconfiguration
+- Auto-setup only fires once, and only if the logger has no existing handlers

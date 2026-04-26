@@ -21,7 +21,7 @@ Tags fix this. A `with eg.tag(request_id='abc')` block appends `[request_id=abc]
 
 But tags alone aren't enough for operation-level visibility. "Did the payment succeed?" isn't answered by scattered `eg.info` lines — you want a **wide event**: one log line that accumulates everything that happened and emits at the end. Counters, timers, and named laps compose into events naturally — `e.set(duration=t, processed=counter)` resolves at emit time, and `t.lap('fetch')` becomes a field in the event automatically. No manual arithmetic, no forgetting to log the final value.
 
-ergolog won't stomp on your app's logging setup — it only configures handlers if there aren't any already. And it won't break your threads — tags use `contextvars`, so each thread and async task sees only its own context.
+ergolog won't stomp on your app's logging setup — set `ERGOLOG_NO_AUTO_SETUP=1` and it does nothing on import. And it won't break your threads — tags use `contextvars`, so each thread and async task sees only its own context.
 
 ## Installation
 
@@ -311,20 +311,52 @@ By default, `trace` only logs the function name and timing (safe for production)
 
 ## Configuration
 
-The config dict is exposed for customization before ergolog sets up:
+Ergolog auto-configures on import — a single stdout handler with colored output. No setup required.
+
+### Python API
+
+Use `eg.config` to add outputs, change formatters, or control propagation:
 
 ```py
-from ergolog import eg, config
+from ergolog import eg
 
-config['loggers']['ergo']['level'] = 'WARNING'
+# Add JSON output to a file (append mode)
+eg.config.add_output('file', path='app.jsonl', format='json')
 
-from ergolog import eg  # import after modifying config
+# Add plain (no-color) output to stderr
+eg.config.add_output('stderr', format='plain')
+
+# Switch stdout to JSON
+eg.config.set_format('json')
+
+# Change log level
+eg.config.set_level('WARNING')
+
+# Prevent double-logging in framework contexts
+eg.config.set_propagate(False)
+
+# Remove an output
+eg.config.remove_output('stdout')
 ```
 
-Ergolog only configures logging if the default logger has no existing handlers, so it won't stomp on your application's logging setup.
+Valid formats: `'default'` (colored), `'plain'` (no ANSI), `'json'` (JSONL).
+Valid outputs: `'stdout'`, `'stderr'`, `'file'`.
+
+### Using in a library
+
+If you're building a library that uses ergolog, set `ERGOLOG_NO_AUTO_SETUP=1` before importing. This prevents ergolog from configuring any handlers — your host application owns logging:
+
+```py
+import os
+os.environ['ERGOLOG_NO_AUTO_SETUP'] = '1'
+from ergolog import eg
+```
 
 ### Environment Variables
 
+All env vars are "emergency brakes" — they *prevent* something:
+
+- `ERGOLOG_NO_AUTO_SETUP` — don't configure any handlers on import
 - `ERGOLOG_NO_COLORS` — disable ANSI color output
 - `ERGOLOG_NO_TIME` — disable timestamp prefix
 - `ERGOLOG_DEFAULT_LOGGER` — override the default logger name (default: `ergo`)
