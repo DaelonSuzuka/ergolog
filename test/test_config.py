@@ -29,12 +29,6 @@ class TestConfigAPI:
     def test_config_has_set_format(self):
         assert callable(eg.config.set_format)
 
-    def test_config_has_set_level(self):
-        assert callable(eg.config.set_level)
-
-    def test_config_has_set_propagate(self):
-        assert callable(eg.config.set_propagate)
-
 
 class TestAddOutput:
     """Test adding output handlers."""
@@ -168,38 +162,6 @@ class TestSetFormat:
 
         handler = logging.getLogger('ergo').handlers[0]
         assert isinstance(handler.formatter, ErgoFormatter)
-
-
-class TestSetLevel:
-    """Test setting log level."""
-
-    def test_set_level_warning(self, clean_logger):
-        eg.config.add_output('stdout', format='default')
-        eg.config.set_level('WARNING')
-
-        assert logging.getLogger('ergo').level == logging.WARNING
-
-    def test_set_level_debug(self, clean_logger):
-        eg.config.add_output('stdout', format='default')
-        eg.config.set_level('DEBUG')
-
-        assert logging.getLogger('ergo').level == logging.DEBUG
-
-
-class TestSetPropagate:
-    """Test propagation control."""
-
-    def test_disable_propagation(self, clean_logger):
-        eg.config.add_output('stdout', format='default')
-        eg.config.set_propagate(False)
-
-        assert logging.getLogger('ergo').propagate is False
-
-    def test_enable_propagation(self, clean_logger):
-        eg.config.add_output('stdout', format='default')
-        eg.config.set_propagate(True)
-
-        assert logging.getLogger('ergo').propagate is True
 
 
 class TestAutoSetup:

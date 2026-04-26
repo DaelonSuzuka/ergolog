@@ -51,11 +51,16 @@ eg.config.add_output("stdout", format="plain")
 # JSON to stdout
 eg.config.set_format("json")
 
-# Change log level
-eg.config.set_level("WARNING")
-
 # Remove an output
 eg.config.remove_output("file")
+```
+
+For log level and propagation, use the standard `logging` API:
+
+```python
+import logging
+eg._logger.setLevel(logging.WARNING)    # filter by level
+eg._logger.propagate = False            # prevent double-logging in frameworks
 ```
 
 ### `add_output()` signature
@@ -73,10 +78,11 @@ eg.config.add_output(kind, path=None, format=None, level=None)
 
 | Method | What it does |
 |---|---|
-| `add_output(kind, ...)` | Adds a handler, registers formatters as needed |
+| `add_output(kind, ...)` | Adds a handler |
 | `remove_output(kind)` | Removes a handler |
-| `set_format(format)` | Changes formatter on existing stdout handler |
-| `set_level(level)` | Changes log level on the ergo logger |
+| `set_format(format, kind?, path?)` | Changes formatter on a handler |
+
+`set_level()` and `set_propagate()` were removed — use `eg._logger.setLevel()` and `eg._logger.propagate` directly.
 
 ### Auto-config behavior
 
@@ -93,7 +99,7 @@ Both formatters are always registered in the config dict. The handler picks whic
 ### Propagation
 
 Default: `propagate=True` (ergolog messages also go to root logger handlers).
-Can be toggled via `eg.config.set_propagate(False)` — prevents double-printing in framework contexts.
+Control via `eg._logger.propagate = False` — prevents double-printing in framework contexts.
 
 ### Combinations
 
@@ -121,5 +127,5 @@ eg.config.add_output("file", path="/var/log/app.jsonl", format="json")
 ### Migrating from current API
 
 - `config['formatters']` etc. → `eg.config.add_output()` / `eg.config.set_format()`
-- `config['loggers']` level → `eg.config.set_level()`
+- `config['loggers']` level → `eg._logger.setLevel()`
 - `config` dict mutation → never worked anyway, now properly unsupported

@@ -660,23 +660,6 @@ class ErgoConfig:
                 handler._ergolog_format = effective_format  # type: ignore[attr-defined]
                 return
 
-    def set_level(self, level: str) -> None:
-        """Set the log level on the ergolog logger.
-
-        Args:
-            level: Log level — 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
-        """
-        self._logger.setLevel(getattr(logging, level.upper()))
-
-    def set_propagate(self, propagate: bool) -> None:
-        """Set whether ergolog messages propagate to the root logger.
-
-        Args:
-            propagate: True to propagate (default), False to prevent double-logging
-                       in framework contexts.
-        """
-        self._logger.propagate = propagate
-
 
 # Auto-configure on import unless suppressed
 _config = ErgoConfig()

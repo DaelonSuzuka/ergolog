@@ -31,6 +31,47 @@ uv add ergolog
 pip install ergolog
 ```
 
+## Configuration
+
+No configuration needed — ergolog auto-configures on import with colored output to stdout.
+
+```py
+from ergolog import eg
+eg.info('works immediately')
+```
+
+To customize at runtime, use `eg.config`:
+
+```py
+eg.config.add_output('file', path='app.jsonl', format='json')  # JSON to file (append mode)
+eg.config.set_format('json')         # Switch stdout to JSON
+eg.config.remove_output('stdout')   # Remove an output
+```
+
+Valid formats: `'default'` (colored), `'plain'` (no ANSI), `'json'` (JSONL). Valid outputs: `'stdout'`, `'stderr'`, `'file'`.
+
+For log level and propagation, use the standard `logging` API:
+
+```py
+import logging
+eg._logger.setLevel(logging.WARNING)    # filter by level
+eg._logger.propagate = False            # prevent double-logging in frameworks
+```
+
+Using ergolog in a library? Set `ERGOLOG_NO_AUTO_SETUP=1` before importing so the host app owns logging:
+
+```py
+import os
+os.environ['ERGOLOG_NO_AUTO_SETUP'] = '1'
+from ergolog import eg
+```
+
+Environment variables (all "off switches"):
+
+- `ERGOLOG_NO_AUTO_SETUP` — don't configure any handlers on import
+- `ERGOLOG_NO_COLORS` — disable ANSI color output
+- `ERGOLOG_NO_TIME` — disable timestamp prefix
+
 ## Basic Usage
 
 ```py
@@ -288,58 +329,6 @@ my_function(2, 2)
 15:30:01,235 <span style="color: #3498db">**[DEBUG&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [trace=my_function] <span style="color: #7f8c8d">(ergolog.py:252)</span> done in 0.000S
 
 By default, `trace` only logs the function name and timing (safe for production). Use `@eg.trace(log_args=True)` to also log arguments and return values (for local debugging only).
-
-## Configuration
-
-Ergolog auto-configures on import — a single stdout handler with colored output. No setup required.
-
-### Python API
-
-Use `eg.config` to add outputs, change formatters, or control propagation:
-
-```py
-from ergolog import eg
-
-# Add JSON output to a file (append mode)
-eg.config.add_output('file', path='app.jsonl', format='json')
-
-# Add plain (no-color) output to stderr
-eg.config.add_output('stderr', format='plain')
-
-# Switch stdout to JSON
-eg.config.set_format('json')
-
-# Change log level
-eg.config.set_level('WARNING')
-
-# Prevent double-logging in framework contexts
-eg.config.set_propagate(False)
-
-# Remove an output
-eg.config.remove_output('stdout')
-```
-
-Valid formats: `'default'` (colored), `'plain'` (no ANSI), `'json'` (JSONL).
-Valid outputs: `'stdout'`, `'stderr'`, `'file'`.
-
-### Using in a library
-
-If you're building a library that uses ergolog, set `ERGOLOG_NO_AUTO_SETUP=1` before importing. This prevents ergolog from configuring any handlers — your host application owns logging:
-
-```py
-import os
-os.environ['ERGOLOG_NO_AUTO_SETUP'] = '1'
-from ergolog import eg
-```
-
-### Environment Variables
-
-All env vars are "emergency brakes" — they *prevent* something:
-
-- `ERGOLOG_NO_AUTO_SETUP` — don't configure any handlers on import
-- `ERGOLOG_NO_COLORS` — disable ANSI color output
-- `ERGOLOG_NO_TIME` — disable timestamp prefix
-- `ERGOLOG_DEFAULT_LOGGER` — override the default logger name (default: `ergo`)
 
 ### Structured Logging
 
