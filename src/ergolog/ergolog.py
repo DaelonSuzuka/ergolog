@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import logging
 import os
 import sys
 from contextvars import ContextVar
 from time import time
-from typing import Callable, Optional, Union, List, Tuple, Any
+from typing import Any, Callable
 from uuid import uuid4
 
 # --------------------------------------------------------------------------- #
@@ -57,11 +59,11 @@ class ErgoCounter:
 class ErgoTagger:
     _tag_stack_var: ContextVar[list] = ContextVar('tag_stack', default=[])
 
-    def __init__(self, *tags: str, **kwtags: Union[str, Callable[[], str], 'ErgoCounter', 'ErgoTimer']) -> None:
+    def __init__(self, *tags: str, **kwtags: str | Callable[[], str] | ErgoCounter | ErgoTimer) -> None:
         self._tags = [*tags]
         self._kwtags = kwtags
 
-        self.applied_tags: List[Union[str, Tuple[str, Any]]] = []
+        self.applied_tags: list[str | tuple[str, Any]] = []
 
     def __call__(self, wrapped):
         """decorator"""
@@ -124,7 +126,7 @@ class ErgoTimer:
             t.lap('process')
     """
 
-    def __init__(self, cb: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(self, cb: Callable[[str], None] | None = None) -> None:
         self.start = time()
         self.cb = cb
         self._laps: dict[str, float] = {}
@@ -161,7 +163,7 @@ class ErgoTimer:
         """Current elapsed time in seconds (always fresh)."""
         return time() - self.start
 
-    def lap(self, name: Optional[str] = None) -> float:
+    def lap(self, name: str | None = None) -> float:
         """Return current elapsed time without stopping the timer.
 
         If a name is given, the lap is recorded and will be included
@@ -218,7 +220,7 @@ class ErgoEvent:
         self._context = dict(initial_context)
         self._start = time()
         self._emitted = False
-        self._error: Optional[Exception] = None
+        self._error: Exception | None = None
         self._level: int = logging.INFO
 
     def __enter__(self):
@@ -259,7 +261,7 @@ class ErgoEvent:
         self._context.update(context)
         return self
 
-    def warn(self, message: Optional[str] = None, **context) -> 'ErgoEvent':
+    def warn(self, message: str | None = None, **context) -> ErgoEvent:
         """Set the event level to WARNING.
 
         Optionally provide a message and additional context.
@@ -406,7 +408,7 @@ class C:
         return C.DIM + text + C.OFF
 
     @classmethod
-    def apply(cls, text: str, style: Union[str, list[str]]):
+    def apply(cls, text: str, style: str | list[str]):
         if NO_COLORS:
             return text
         if isinstance(style, list):
@@ -458,7 +460,7 @@ class ErgoJSONFormatter(logging.Formatter):
     """Structured JSON formatter for logs.
 
     Outputs each log as a JSON object on a single line (JSONL/NDJSON).
-    Useful for log aggregation systems, agent parsing with jq, etc.
+    Useful for log aggregation systems and agent parsing.
 
     Includes:
         - timestamp (ISO 8601)
@@ -468,20 +470,10 @@ class ErgoJSONFormatter(logging.Formatter):
         - tags (dict of tag key: value)
         - event (wide event context if present)
         - duration (seconds if timed operation)
-        - file, line, function for debugging, error objects, and any event context. Defaults to '%(asctime)s'.
+        - location (file, line, function)
 
-    Example:
-        logging.config.dictConfig({
-            'formatters': {
-                'json': {'()': ErgoJSONFormatter},
-            },
-            'handlers': {
-                'default': {
-                    'formatter': 'json',
-                    ...
-                },
-            },
-        })
+    Add via ErgoConfig:
+        eg.config.add_output("file", path="app.jsonl", format="json")
     """
 
     def __init__(self, fmt=None, datefmt=None, style: str = '%'):
@@ -560,8 +552,8 @@ class ErgoConfig:
         return ErgoFormatter()
 
     def _make_handler(self, kind: str, format: str = 'default',
-                      path: Optional[str] = None,
-                      level: Optional[str] = None) -> logging.Handler:
+                      path: str | None = None,
+                      level: str | None = None) -> logging.Handler:
         """Create and configure a logging handler."""
         handler: logging.Handler
         if kind == 'file':
@@ -591,8 +583,8 @@ class ErgoConfig:
             return
         self.add_output('stdout', format='default')
 
-    def add_output(self, kind: str = 'stdout', *, path: Optional[str] = None,
-                   format: str = 'default', level: Optional[str] = None) -> None:
+    def add_output(self, kind: str = 'stdout', *, path: str | None = None,
+                   format: str = 'default', level: str | None = None) -> None:
         """Add a logging output handler.
 
         Args:
@@ -627,7 +619,7 @@ class ErgoConfig:
         if not self._logger.level or self._logger.level == logging.NOTSET:
             self._logger.setLevel(logging.DEBUG)
 
-    def remove_output(self, kind: str, *, path: Optional[str] = None) -> None:
+    def remove_output(self, kind: str, *, path: str | None = None) -> None:
         """Remove a logging output handler.
 
         Args:
@@ -641,7 +633,7 @@ class ErgoConfig:
                 self._logger.removeHandler(handler)
                 return
 
-    def set_format(self, format: str, kind: str = 'stdout', path: Optional[str] = None) -> None:
+    def set_format(self, format: str, kind: str = 'stdout', path: str | None = None) -> None:
         """Change the formatter on an existing handler.
 
         Args:
@@ -670,13 +662,19 @@ if not NO_AUTO_SETUP:
 # *************************************************************************** #
 
 
-class ErgoLog(logging.Logger):
+class ErgoLog:
     _loggers: dict[str, 'ErgoLog'] = {}
+    config = _config
 
     def __init__(self, name=DEFAULT_LOGGER) -> None:
         self._name = name
         self._logger = logging.getLogger(name)
-        self.config = _config
+
+        # Register this wrapper instance so getLogger returns identity.
+        # `eg('')` resolves to 'ergo' via the empty-string fallback — without
+        # this, it would find `None` in _loggers and allocate a second wrapper.
+        if name not in ErgoLog._loggers:
+            ErgoLog._loggers[name] = self
 
         # avoid the extra function calls from __getattr__
         self.debug = self._logger.debug       # type: ignore[assignment]
@@ -707,11 +705,11 @@ class ErgoLog(logging.Logger):
 
         return ErgoLog._loggers[name]
 
-    def tag(self, *tags: str, **kwargs: Union[str, Callable[[], str], ErgoCounter, ErgoTimer]):
+    def tag(self, *tags: str, **kwargs: str | Callable[[], str] | ErgoCounter | ErgoTimer):
         """apply ergolog tags"""
         return ErgoTagger(*tags, **kwargs)
 
-    def timer(self, cb: Optional[Callable[[str], None]] = None):
+    def timer(self, cb: Callable[[str], None] | None = None):
         """Create a timer"""
         return ErgoTimer(cb)
 
@@ -752,8 +750,10 @@ class ErgoLog(logging.Logger):
     def trace(self, func=None, *, log_args=False):
         """Trace a function — logs entry, timing, and optionally args/return values.
 
-        By default, only logs function name and timing (safe for production).
-        Use log_args=True to log arguments and return values (for local debugging only).
+        Intended for local debugging only. A WARNING is emitted at decoration time
+        as a reminder not to leave it in production code.
+
+        Use log_args=True to log arguments and return values.
         """
         if func is None:
             return lambda f: self.trace(f, log_args=log_args)

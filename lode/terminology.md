@@ -1,7 +1,7 @@
 # Terminology
 
 - **eg** — the primary exported singleton (`ErgoLog` instance); the user's entry point to all ergolog functionality
-- **ErgoLog** — the core logger class extending `logging.Logger`; manages named/child logger instances and exposes `.tag()`, `.timer()`, `.trace`
+- **ErgoLog** — the core logger wrapper; manages named/child logger instances and exposes `.tag()`, `.timer()`, `.event()`, `.trace()`; delegates logging to an internal `logging.Logger` via bound methods and `__getattr__`
 - **ErgoTagger** — context-manager/decorator that pushes tags onto a shared `tag_stack`; supports positional tags (`'tag'`), keyword tags (`key='val'`), and auto-UUID `job` tags
 - **ErgoTimer** — context-manager/decorator that tracks elapsed wall-clock time via `time.time()`; optionally calls a callback on exit; supports `.lap()` for split times and `.lap(name)` for named laps; usable as tag value (dynamic elapsed) and event value (auto-resolves + collects named laps)
 - **lap** — `.lap()` returns current elapsed as float without stopping; `.lap('name')` also records in the timer's `_laps` dict for auto-collection by events
@@ -17,11 +17,11 @@
 - **callable tag** — a keyword tag value that is a zero-arg callable; called at `__enter__` time to produce the tag string (e.g. `eg.tag(job=eg.uid)`)
 - **ErgoCounter** — mutable counter/accumulator usable as a tag value and event value; starts at 0, supports `+=`, `-=`, `==`, and `.count()` for loop enumeration; evaluated per-record (shows current value on each log line) and per-emit (shows current value in events)
 - **counter** — `eg.counter()` factory method that creates an `ErgoCounter` instance
-- **trace** — decorator that logs function entry and timing; emits a `WARNING` at registration as a reminder not to leave it in production; by default does not log args or return values (safe for production); use `@eg.trace(log_args=True)` to opt into full arg/return logging for local debugging
+- **trace** — decorator that logs function entry and timing; emits a `WARNING` at registration as a reminder not to leave it in production; intended for local debugging only; use `@eg.trace(log_args=True)` to opt into full arg/return logging
 - **named logger** — a child logger created via `eg('name')` producing logger names like `ergo.name`
 - **child logger** — a nested named logger created from an existing named logger, e.g. `one('two')` → `ergo.one.two`
 - **ERGOLOG_NO_COLORS** — env var; when set, disables ANSI color output
 - **ERGOLOG_NO_TIME** — env var; when set, suppresses timestamp prefix
-- **config** — the exposed `dictConfig`-compatible dict; modifiable before ergolog sets up, useful for changing handlers, formatters, levels, etc.
+- **config** — `eg.config`, the `ErgoConfig` instance that manages handlers and formatters at runtime; use `add_output()`, `remove_output()`, `set_format()` to reconfigure
 - **ERGOLOG_DEFAULT_LOGGER** — env var; overrides the default logger name (default: `'ergo'`)
 - **warn** — `e.warn()` on ErgoEvent sets level to WARNING; optionally records a warning message and additional context

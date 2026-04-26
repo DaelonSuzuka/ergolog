@@ -112,7 +112,12 @@ classDiagram
 ### Named/Child Loggers
 - `eg('name')` → logger `ergo.name`
 - `eg('name')('child')` → logger `ergo.name.child`
-- `eg()` returns the root logger
+- `eg()` returns the root logger (cached identity)
+- `eg('')` returns identity — `''.removeprefix('ergo.')` produces `''`, fallsthrough to `name = self._name`
+- `eg('ergo')` returns identity — exact name match, no `if name != self._name` prefix added
+- `eg('ergo.')` returns identity — trailing dot absorbed
+- `one('ergo.one')` returns identity on a named logger
+- `one('ergo.one.two')` works — redundant prefix is stripped before qualification
 - Loggers are cached in `ErgoLog._loggers`
 
 ### Tag System
@@ -190,8 +195,8 @@ classDiagram
 - Explicit lap values (floats) are stored as plain values; they don't trigger auto-lap collection
 
 ### Trace Decorator
-- Logs function name and timing by default (safe for production)
-- `@eg.trace(log_args=True)` opts into logging arguments and return values (for local debugging only)
+- Intended for local debugging only; emits a `WARNING` at decoration time as a reminder not to leave it in production code
+- Logs function name and timing by default; `@eg.trace(log_args=True)` opts into logging arguments and return values
 - `@eg.trace()` requires parens — no bare `@eg.trace`
 - Wraps function with both `tag` and `timer`
 - Equivalent to `@eg.tag(trace=func.__name__)` + `@eg.timer()`

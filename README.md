@@ -15,13 +15,13 @@ A minimal, ergonomic Python logging wrapper
 
 ## Why ergolog?
 
-Python's `logging` module works, but its API fights you. Every log line is manual string formatting — you scatter `f'request_id={rid}'` across your code and hope you spelled it the same way each time. Correlating lines across a request means grepping for that same string.
+ergolog is built around two ideas: tags carry ambient context, and wide events capture operation outcomes.
 
-Tags fix this. A `with eg.tag(request_id='abc')` block appends `[request_id=abc]` to every log line inside it — no manual interpolation, no typos, and the tag stack unwinds automatically on exception.
+Tags propagate through the call stack. When you open a `with eg.tag(request_id='abc')` block, every log line inside it carries `[request_id=abc]`. Tags nest, so a child scope adds to the stack instead of replacing it. The stack unwinds automatically on exception, and because tags are stored in `contextvars`, each thread and async task maintains its own isolated context.
 
-But tags alone aren't enough for operation-level visibility. "Did the payment succeed?" isn't answered by scattered `eg.info` lines — you want a **wide event**: one log line that accumulates everything that happened and emits at the end. Counters, timers, and named laps compose into events naturally — `e.set(duration=t, processed=counter)` resolves at emit time, and `t.lap('fetch')` becomes a field in the event automatically. No manual arithmetic, no forgetting to log the final value.
+Wide events complement tags. Where tags answer "what context am I in?", events answer "what happened?". An event accumulates fields like counters, timers, named laps, and custom data, then emits a single structured line at operation boundaries. Timer and counter values evaluate at emit time, so the final line always shows total duration and all intermediate splits without manual bookkeeping.
 
-ergolog won't stomp on your app's logging setup — set `ERGOLOG_NO_AUTO_SETUP=1` and it does nothing on import. And it won't break your threads — tags use `contextvars`, so each thread and async task sees only its own context.
+ergolog won't stomp on your app's logging setup — set `ERGOLOG_NO_AUTO_SETUP=1` and it does nothing on import.
 
 ## Installation
 
@@ -343,6 +343,8 @@ with eg.tag(elapsed=t):
 
 ## Trace
 
+`eg.trace()` is a debugging tool for local development. It logs function entry, elapsed time, and optionally arguments and return values. A `WARNING` is emitted at decoration time as a reminder not to leave it in production code.
+
 ```py
 from ergolog import eg
 
@@ -358,7 +360,7 @@ my_function(2, 2)
 15:30:01,235 [DEBUG   ] ergo [trace=my_function] (ergolog.py:252) done in 0.000S
 ```
 
-By default, `trace` only logs the function name and timing (safe for production). Use `@eg.trace(log_args=True)` to also log arguments and return values (for local debugging only).
+By default, arguments and return values are omitted. Use `log_args=True` when you need full visibility into a function call.
 
 ### Structured Logging
 
@@ -488,7 +490,7 @@ with eg.event(op='export') as e:
 
 ### Named Laps in Events
 
-Named laps on timers are auto-collected into events. This is the killer feature for multi-stage operations:
+Named laps on timers are auto-collected into events. This is the primary mechanism for breaking down multi-stage operations:
 
 ```py
 t = eg.timer()

@@ -63,6 +63,43 @@ def test_child_loggers(caplog: LogCaptureFixture):
     assert caplog.records[2].name == 'ergo.one.two'
 
 
+def test_named_logger_edge_cases():
+    """Document identity and caching behavior for named logger edge cases."""
+    # Empty string returns root identity
+    root = eg('')
+    assert root is eg
+    assert root._name == 'ergo'
+
+    # Fully qualified root name returns identity
+    root2 = eg('ergo')
+    assert root2 is eg
+
+    # Trailing dot absorbed, returns identity
+    root3 = eg('ergo.')
+    assert root3 is eg
+
+    # From a child, empty string returns identity
+    one = eg('one')
+    same_one = one('')
+    assert same_one is one
+
+    # From a child, fully qualified self-name returns identity
+    same_one2 = one('ergo.one')
+    assert same_one2 is one
+
+    # Redundant prefix is stripped when creating grandchildren
+    two = one('ergo.one.two')
+    assert two._name == 'ergo.one.two'
+    two2 = one('two')
+    assert two2 is two
+
+    # Caching: multiple lookups return same instance
+    three = eg('three')
+    three_again = eg('three')
+    assert three is three_again
+
+
+
 def test_tags(caplog: LogCaptureFixture):
     with eg.tag('a'):
         eg.info('one tag')

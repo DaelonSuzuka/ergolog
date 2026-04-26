@@ -3,6 +3,7 @@
 ## Code Style
 - **Formatter**: ruff (line-length 120, single quotes)
 - **Python version**: >=3.9
+- **Type hints**: modern PEP 604 union (`str | None`) with `from __future__ import annotations`; lowercase generics (`list[str]`, `dict[str, Any]`) via PEP 585
 - **No runtime dependencies** — ergolog is zero-dependency
 - **Dev dependencies**: pytest>=8.4.1, pytest-cov>=6.2.1
 
@@ -16,8 +17,8 @@
 - **Singleton entry point**: `eg = ErgoLog()` is the single exported instance
 - **Logger caching**: `ErgoLog._loggers` dict caches all named loggers by fully-qualified name
 - **Context-local tag state**: `ErgoTagger._tag_stack_var` is a `contextvars.ContextVar`; each thread and async task gets its own isolated tag stack via `set()/reset(token)`
-- **Logging delegation**: `ErgoLog` wraps a stdlib `logging.Logger` stored as `self._logger`; standard log methods are bound directly to avoid `__getattr__` overhead
-- **dictConfig initialization**: logging is configured at module import time via `logging.config.dictConfig`
+- **Logger delegation**: `ErgoLog` wraps a stdlib `logging.Logger` stored as `self._logger`; standard log methods are bound directly to avoid `__getattr__` overhead
+- **Auto-setup on import**: if `ERGOLOG_NO_AUTO_SETUP` is not set and the logger has no handlers, `ErgoConfig` adds a stdout handler with `ErgoFormatter`
 - **Color as opt-in/opt-out**: colors enabled by default; `ERGOLOG_NO_COLORS` strips all ANSI codes
 
 ## Testing
