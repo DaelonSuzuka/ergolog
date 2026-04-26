@@ -369,7 +369,7 @@ class ErgoEvent:
             'duration': duration_s,
         }
 
-        self._logger._logger.log(self._level, message, extra=extra)
+        self._logger.log(self._level, message, extra=extra)
 
     @property
     def context(self) -> dict:
@@ -576,9 +576,14 @@ class ErgoConfig:
     def auto_setup(self) -> None:
         """Apply default configuration if not already configured.
 
-        Called automatically on import unless ERGOLOG_NO_AUTO_SETUP is set.
+        Called automatically on import for the root logger only.
+        Child loggers inherit output via propagation by default.
         Safe to call multiple times — won't duplicate handlers.
         """
+        if NO_AUTO_SETUP:
+            return
+        if self._logger_name != DEFAULT_LOGGER:
+            return
         if self._logger.handlers:
             return
         self.add_output('stdout', format='default')
@@ -599,13 +604,8 @@ class ErgoConfig:
         if format not in self.VALID_FORMATS:
             raise ValueError(f"Invalid format '{format}'. Must be one of: {self.VALID_FORMATS}")
 
-        # For 'plain' format, create the handler with ErgoFormatter (NO_COLORS
-        # is already set globally if the user requested it via env var).
-        # Plain just means "default formatter without ANSI codes" — which is
-        # exactly what happens when NO_COLORS is set.
         effective_format = 'default' if format == 'plain' else format
 
-        # Remove existing handler with the same name if present
         handler_name = kind if kind != 'file' else f'file_{path}'
         for existing_handler in self._logger.handlers[:]:
             if hasattr(existing_handler, '_ergolog_name') and existing_handler._ergolog_name == handler_name:  # type: ignore[attr-defined]
@@ -615,7 +615,6 @@ class ErgoConfig:
         handler = self._make_handler(kind, format=effective_format, path=path, level=level)
         self._logger.addHandler(handler)
 
-        # Ensure the logger level allows messages through
         if not self._logger.level or self._logger.level == logging.NOTSET:
             self._logger.setLevel(logging.DEBUG)
 
@@ -653,22 +652,13 @@ class ErgoConfig:
                 return
 
 
-# Auto-configure on import unless suppressed
-_config = ErgoConfig()
-if not NO_AUTO_SETUP:
-    _config.auto_setup()
-
-
-# *************************************************************************** #
-
-
 class ErgoLog:
     _loggers: dict[str, 'ErgoLog'] = {}
-    config = _config
 
     def __init__(self, name=DEFAULT_LOGGER) -> None:
         self._name = name
         self._logger = logging.getLogger(name)
+        self.config = ErgoConfig(name)
 
         # Register this wrapper instance so getLogger returns identity.
         # `eg('')` resolves to 'ergo' via the empty-string fallback — without
@@ -676,12 +666,16 @@ class ErgoLog:
         if name not in ErgoLog._loggers:
             ErgoLog._loggers[name] = self
 
+        # Auto-configure root logger on first creation
+        self.config.auto_setup()
+
         # avoid the extra function calls from __getattr__
         self.debug = self._logger.debug       # type: ignore[assignment]
         self.info = self._logger.info         # type: ignore[assignment]
         self.warning = self._logger.warning   # type: ignore[assignment]
         self.error = self._logger.error       # type: ignore[assignment]
         self.critical = self._logger.critical # type: ignore[assignment]
+        self.log = self._logger.log           # type: ignore[assignment]
 
     def __getattr__(self, name: str):
         try:

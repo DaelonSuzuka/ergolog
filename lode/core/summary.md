@@ -116,52 +116,17 @@ classDiagram
 - `eg('')` returns identity — `''.removeprefix('ergo.')` produces `''`, fallsthrough to `name = self._name`
 - `eg('ergo')` returns identity — exact name match, no `if name != self._name` prefix added
 - `eg('ergo.')` returns identity — trailing dot absorbed
+- `one('')` returns identity on a named logger
 - `one('ergo.one')` returns identity on a named logger
 - `one('ergo.one.two')` works — redundant prefix is stripped before qualification
-- Loggers are cached in `ErgoLog._loggers`
-
-### Tag System
-- `ErgoTagger._tag_stack_var` is a `contextvars.ContextVar` — each thread and async task gets its own isolated tag stack
-- Tags nest: entering a tag `set()`s a new stack, exiting `reset(token)`s to the previous snapshot
-- Keyword tag values can be callables (zero-arg, returning a string) — called at `__enter__` time to generate the tag value
-- `eg.uid` is a static method returning a 6-char hex UUID — the idiomatic callable for `eg.tag(job=eg.uid)`
-- No magic tag names — `'job'` is not special; auto-generated IDs use the callable mechanism instead
-- Tags are injected onto `LogRecord` by `ErgoTagFilter`, not by the formatter — any formatter can access `record.tags` and `record.tag_list`
-- `record.tag_list` is the raw list of tag strings (for structured/JSON logging); `record.tags` is the formatted display string (for pretty output)
-- The `set()/reset()` pattern eliminates `list.remove()` corruption bugs that occurred with a shared mutable list
-
-### Wide Events (ErgoEvent)
-- Not thread-safe — `_context` is a plain `dict` with no locking
-- This is by design: events are born, populated, and emitted within a single scope/thread
-- The wide-event pattern (`with eg.event(...) as e:`) is inherently single-threaded — you accumulate context for one operation and emit at the end
-- Tags provide the cross-thread/cross-async safety story (`contextvars`); events don't need to because they're never shared
-- `eg.event(**context)` creates an accumulator for wide event logging
-- Accumulates context via `e.set(**context)` until `emit()` is called
-- Can be used as context manager (auto-emit on exit) or manually (`e.emit()`)
-- Captures duration automatically in `event['duration_s']`
-- Captures current tag stack at emit time in `event['tags']`
-- Errors can be recorded via `e.error(err, **context)` — sets level to ERROR
-- `e.warn(message?, **context)` — sets level to WARNING, optionally records a warning message and context
-- After `emit()`, further calls to `set()` are ignored (sealed)
-- Works with `ErgoJSONFormatter` for structured JSONL output
+- Loggers are cached in `ErgoLog._loggers`; `__init__` registers `self` to ensure identity
 
 ### Config (ErgoConfig)
-- `eg.config` is an `ErgoConfig` instance attached to the `ErgoLog` singleton
-- Replaces the old module-level `config` dict (which was a dead letter after import)
-- `dictConfig` is no longer exposed — `ErgoConfig` manages handlers directly
-- **Auto-setup on import**: adds a stdout handler with `ErgoFormatter` unless `ERGOLOG_NO_AUTO_SETUP=1` or the logger already has handlers
-- **Env vars** (all "emergency brake" style — prevent something):
-  - `ERGOLOG_NO_COLORS` — strip ANSI output
-  - `ERGOLOG_NO_TIME` — strip timestamps
-  - `ERGOLOG_NO_AUTO_SETUP` — don't configure any handlers on import
-- **Python API**:
-  - `eg.config.add_output(kind, path?, format?, level?)` — add a handler (stdout, stderr, file)
-  - `eg.config.remove_output(kind, path?)` — remove a handler
-  - `eg.config.set_format(format, kind?, path?)` — change formatter on a handler
-  - `eg.config.set_level(level)` — change log level
-  - `eg.config.set_propagate(bool)` — control propagation to root logger
-- **Valid formats**: `'default'` (colored), `'plain'` (no ANSI), `'json'` (JSONL)
-- **Valid outputs**: `'stdout'`, `'stderr'`, `'file'`
+- `eg.config` is an `ErgoConfig` instance targeting the root logger (`ergo`)
+- Each named/child logger also has its own `config` targeting its own wrapped `logging.Logger`
+- Auto-setup on import only fires for the root logger; child loggers inherit via stdlib propagation
+- `ergo.config.add_output(...)` affects only `ergo`
+- `one.config.add_output(...)` affects only `ergo.one`
 - File output always uses append mode
 - Calling `add_output()` with the same kind replaces the existing handler
 - `ErgoTagFilter` is attached to every handler created by `ErgoConfig`
