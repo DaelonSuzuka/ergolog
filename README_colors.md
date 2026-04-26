@@ -248,6 +248,8 @@ with eg.timer() as t:
     # t.laps == {'fetch': 0.103, 'process': 0.456}
 ```
 
+15:30:01,235 <span style="color: #3498db">**[DEBUG&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:3)</span> fetch=0.103s process=0.456s total=0.456s
+
 ### Timers as Tag Values
 
 Timers can be used as keyword tag values, showing live elapsed time on each log line:
@@ -255,12 +257,16 @@ Timers can be used as keyword tag values, showing live elapsed time on each log 
 ```py
 t = eg.timer()
 with eg.tag(elapsed=t):
-    eg.info('start')        # [elapsed=0.000s]
+    eg.info('start')
     sleep(0.1)
-    eg.info('middle')       # [elapsed=0.100s]
+    eg.info('middle')
     sleep(0.1)
-    eg.info('end')           # [elapsed=0.200s]
+    eg.info('end')
 ```
+
+15:30:01,234 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [elapsed=0.000s] <span style="color: #7f8c8d">(main.py:3)</span> start  
+15:30:01,334 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [elapsed=0.100s] <span style="color: #7f8c8d">(main.py:5)</span> middle  
+15:30:01,434 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [elapsed=0.200s] <span style="color: #7f8c8d">(main.py:7)</span> end
 
 15:30:01,235 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [elapsed=0.000s] <span style="color: #7f8c8d">(main.py:4)</span> start  
 15:30:01,335 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [elapsed=0.100s] <span style="color: #7f8c8d">(main.py:6)</span> middle  
@@ -373,14 +379,12 @@ Events default to `INFO`. Use `e.error()` or `e.warn()` to mark the outcome:
 # Success → INFO
 with eg.event(user='alice') as e:
     process_payment()
-# → INFO
 
 # Success with concern → WARNING
 with eg.event(user='bob') as e:
     result = process_payment()
     if result.used_fallback:
         e.warn('used fallback payment method')
-# → WARNING
 
 # Failure → ERROR
 try:
@@ -388,8 +392,11 @@ try:
         raise ValueError('insufficient funds')
 except ValueError:
     pass
-# → ERROR: ValueError: insufficient funds | user=charlie | duration=0.002s
 ```
+
+15:30:01,235 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:2)</span> user=alice | <span style="color: #7f8c8d">duration=0.001s</span>  
+15:30:01,235 <span style="color: #f39c12">**[WARNING&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:7)</span> warning=used fallback payment method user=bob | <span style="color: #7f8c8d">duration=0.001s</span>  
+15:30:01,235 <span style="color: #e74c3c">**[ERROR&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:12)</span> ValueError: insufficient funds user=charlie | <span style="color: #7f8c8d">duration=0.002s</span>
 
 ### Sealed After Emit
 
@@ -401,6 +408,8 @@ e.emit()
 e.set(ignored='data')  # Ignored, event is sealed
 ```
 
+15:30:01,235 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:2)</span> user=alice | <span style="color: #7f8c8d">duration=0.001s</span>
+
 ### Capturing Tags
 
 Events capture the current tag stack at emit time:
@@ -410,8 +419,9 @@ with eg.tag(request_id='abc123'):
     e = eg.event(operation='tagged')
     e.set(extra='data')
     e.emit()
-# Event includes: {'tags': {'request_id': 'abc123'}, 'operation': 'tagged', ...}
 ```
+
+15:30:01,235 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:2)</span> operation=tagged extra=data request_id=abc123 | <span style="color: #7f8c8d">duration=0.001s</span>
 
 ### Counters in Events
 
@@ -487,36 +497,44 @@ Use both together for complete visibility:
 ```py
 with eg.event(operation='export') as e:
     e.set(format='pdf', pages=24)
-    eg.debug('starting export')      # How we got here
+    eg.debug('starting export')
     export_to_pdf(doc)
     eg.debug('export complete')
     # Event emits: what happened (one line)
 ```
+
+15:30:01,234 <span style="color: #3498db">**[DEBUG&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [operation=export] <span style="color: #7f8c8d">(main.py:3)</span> starting export  
+15:30:01,345 <span style="color: #3498db">**[DEBUG&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo</span> [operation=export] <span style="color: #7f8c8d">(main.py:5)</span> export complete  
+15:30:01,345 <span style="color: #27ae60">**[INFO&nbsp;&nbsp;&nbsp;&nbsp;]**</span> <span style="color: #7f8c8d">ergo (main.py:6)</span> operation=export format=pdf pages=24 | <span style="color: #7f8c8d">duration=0.111s</span>
 
 ## JSON Formatter
 
 For structured logging to files or log aggregation systems:
 
 ```py
-import logging
-from ergolog import eg, ErgoJSONFormatter
+from ergolog import eg
 
-# Configure JSON output
-handler = logging.StreamHandler()
-handler.setFormatter(ErgoJSONFormatter())
-eg._logger.handlers = [handler]
+# Switch to JSON output
+eg.config.set_format('json')
 
-eg.info('hello', extra={'user': 'alice'})
+eg.info('hello')
 ```
 
 Output (one line per log):
 
 ```json
-{"timestamp":"2024-01-15T10:23:45.123Z","level":"INFO","name":"ergo","message":"hello","user":"alice","tags":{"request_id":"abc123"},"location":{"file":"main.py","line":4,"function":"<module>"}}
+{"timestamp":"2024-01-15T10:23:45.123Z","level":"INFO","name":"ergo","message":"hello","tags":{},"location":{"file":"main.py","line":4,"function":"<module>"}}
 ```
 
 For wide events, the full context is included:
 
 ```json
 {"timestamp":"...","level":"INFO","name":"ergo","message":"user=alice action=checkout ...","event":{"user":"alice","action":"checkout","cart":{"items":3},"duration_s":0.234},"tags":{"request_id":"abc123"}}
+```
+
+You can also send JSON to a file while keeping colored output on stdout:
+
+```py
+eg.config.add_output('file', path='app.jsonl', format='json')
+```
 ```

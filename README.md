@@ -276,6 +276,10 @@ with eg.timer() as t:
     # t.laps == {'fetch': 0.103, 'process': 0.456}
 ```
 
+```
+15:30:01,235 [DEBUG   ] ergo (main.py:3) fetch=0.103s process=0.456s total=0.456s
+```
+
 ### Timers as Tag Values
 
 Timers can be used as keyword tag values, showing live elapsed time on each log line:
@@ -283,11 +287,17 @@ Timers can be used as keyword tag values, showing live elapsed time on each log 
 ```py
 t = eg.timer()
 with eg.tag(elapsed=t):
-    eg.info('start')        # [elapsed=0.000s]
+    eg.info('start')
     sleep(0.1)
-    eg.info('middle')       # [elapsed=0.100s]
+    eg.info('middle')
     sleep(0.1)
-    eg.info('end')           # [elapsed=0.200s]
+    eg.info('end')
+```
+
+```
+15:30:01,234 [INFO    ] ergo [elapsed=0.000s] (main.py:3) start
+15:30:01,334 [INFO    ] ergo [elapsed=0.100s] (main.py:5) middle
+15:30:01,434 [INFO    ] ergo [elapsed=0.200s] (main.py:7) end
 ```
 
 ## Trace
@@ -403,14 +413,12 @@ Events default to `INFO`. Use `e.error()` or `e.warn()` to mark the outcome:
 # Success → INFO
 with eg.event(user='alice') as e:
     process_payment()
-# → INFO
 
 # Success with concern → WARNING
 with eg.event(user='bob') as e:
     result = process_payment()
     if result.used_fallback:
         e.warn('used fallback payment method')
-# → WARNING
 
 # Failure → ERROR
 try:
@@ -418,7 +426,12 @@ try:
         raise ValueError('insufficient funds')
 except ValueError:
     pass
-# → ERROR: ValueError: insufficient funds | user=charlie | duration=0.002s
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:2) user=alice | duration=0.001s
+15:30:01,235 [WARNING ] ergo (main.py:7) warning=used fallback payment method user=bob | duration=0.001s
+15:30:01,235 [ERROR   ] ergo (main.py:12) ValueError: insufficient funds user=charlie | duration=0.002s
 ```
 
 ### Sealed After Emit
@@ -431,6 +444,10 @@ e.emit()
 e.set(ignored='data')  # Ignored, event is sealed
 ```
 
+```
+15:30:01,235 [INFO    ] ergo (main.py:2) user=alice | duration=0.001s
+```
+
 ### Capturing Tags
 
 Events capture the current tag stack at emit time:
@@ -440,7 +457,10 @@ with eg.tag(request_id='abc123'):
     e = eg.event(operation='tagged')
     e.set(extra='data')
     e.emit()
-# Event includes: {'tags': {'request_id': 'abc123'}, 'operation': 'tagged', ...}
+```
+
+```
+15:30:01,235 [INFO    ] ergo (main.py:2) operation=tagged extra=data request_id=abc123 | duration=0.001s
 ```
 
 ### Counters in Events
@@ -525,10 +545,16 @@ Use both together for complete visibility:
 ```py
 with eg.event(operation='export') as e:
     e.set(format='pdf', pages=24)
-    eg.debug('starting export')      # How we got here
+    eg.debug('starting export')
     export_to_pdf(doc)
     eg.debug('export complete')
     # Event emits: what happened (one line)
+```
+
+```
+15:30:01,234 [DEBUG   ] ergo [operation=export] (main.py:3) starting export
+15:30:01,345 [DEBUG   ] ergo [operation=export] (main.py:5) export complete
+15:30:01,345 [INFO    ] ergo (main.py:6) operation=export format=pdf pages=24 | duration=0.111s
 ```
 
 ## JSON Formatter
@@ -536,25 +562,28 @@ with eg.event(operation='export') as e:
 For structured logging to files or log aggregation systems:
 
 ```py
-import logging
-from ergolog import eg, ErgoJSONFormatter
+from ergolog import eg
 
-# Configure JSON output
-handler = logging.StreamHandler()
-handler.setFormatter(ErgoJSONFormatter())
-eg._logger.handlers = [handler]
+# Switch to JSON output
+eg.config.set_format('json')
 
-eg.info('hello', extra={'user': 'alice'})
+eg.info('hello')
 ```
 
 Output (one line per log):
 
 ```json
-{"timestamp":"2024-01-15T10:23:45.123Z","level":"INFO","name":"ergo","message":"hello","user":"alice","tags":{"request_id":"abc123"},"location":{"file":"main.py","line":4,"function":"<module>"}}
+{"timestamp":"2024-01-15T10:23:45.123Z","level":"INFO","name":"ergo","message":"hello","tags":{},"location":{"file":"main.py","line":4,"function":"<module>"}}
 ```
 
 For wide events, the full context is included:
 
 ```json
 {"timestamp":"...","level":"INFO","name":"ergo","message":"user=alice action=checkout ...","event":{"user":"alice","action":"checkout","cart":{"items":3},"duration_s":0.234},"tags":{"request_id":"abc123"}}
+```
+
+You can also send JSON to a file while keeping colored output on stdout:
+
+```py
+eg.config.add_output('file', path='app.jsonl', format='json')
 ```
