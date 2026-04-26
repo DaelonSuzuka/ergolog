@@ -1,7 +1,27 @@
 [![.github/workflows/ci.yml](https://github.com/DaelonSuzuka/ergolog/actions/workflows/ci.yml/badge.svg)](https://github.com/DaelonSuzuka/ergolog/actions/workflows/ci.yml)
 
 # ergolog
-A minimal, ergonomic python logging wrapper
+A minimal, ergonomic Python logging wrapper
+
+`from ergolog import eg` — one entry point for tags, counters, timers, wide events, and trace. Everything context-scoped, thread-safe, and composable.
+
+- **Named loggers** — `eg('name')`, nested with `one('two')`
+- **Tags** — stack and nest for context; keyword tags, callable values, auto-UUIDs
+- **Counters** — live-updating tag values; enumerate loops, accumulate totals
+- **Timers** — elapsed timing with `.lap()` split times and named laps
+- **Wide events** — accumulate context, emit a single line; counters, timers, and laps resolve at emit time
+- **Trace** — function-level decorator for timing and entry logging
+- **Thread-safe** — tag isolation via `contextvars`
+
+## Why ergolog?
+
+Python's `logging` module works, but its API fights you. Every log line is manual string formatting — you scatter `f'request_id={rid}'` across your code and hope you spelled it the same way each time. Correlating lines across a request means grepping for that same string.
+
+Tags fix this. A `with eg.tag(request_id='abc')` block appends `[request_id=abc]` to every log line inside it — no manual interpolation, no typos, and the tag stack unwinds automatically on exception.
+
+But tags alone aren't enough for operation-level visibility. "Did the payment succeed?" isn't answered by scattered `eg.info` lines — you want a **wide event**: one log line that accumulates everything that happened and emits at the end. Counters, timers, and named laps compose into events naturally — `e.set(duration=t, processed=counter)` resolves at emit time, and `t.lap('fetch')` becomes a field in the event automatically. No manual arithmetic, no forgetting to log the final value.
+
+ergolog won't stomp on your app's logging setup — it only configures handlers if there aren't any already. And it won't break your threads — tags use `contextvars`, so each thread and async task sees only its own context.
 
 ## Installation
 
