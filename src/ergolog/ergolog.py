@@ -3,7 +3,7 @@ import os
 from contextvars import ContextVar
 from logging.config import dictConfig
 from time import time
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, List, Tuple, Any
 from uuid import uuid4
 
 # --------------------------------------------------------------------------- #
@@ -60,7 +60,7 @@ class ErgoTagger:
         self._tags = [*tags]
         self._kwtags = kwtags
 
-        self.applied_tags = []
+        self.applied_tags: List[Union[str, Tuple[str, Any]]] = []
 
     def __call__(self, wrapped):
         """decorator"""
@@ -430,8 +430,8 @@ class ErgoTagFilter(logging.Filter):
             else:
                 tag_strings.append(tag)
                 tag_list.append(tag)
-        record.tag_list = tag_list
-        record.tags = f'[{", ".join(tag_strings)}] ' if tag_strings else ''
+        record.tag_list = tag_list  # type: ignore[attr-defined]
+        record.tags = f'[{", ".join(tag_strings)}] ' if tag_strings else ''  # type: ignore[attr-defined]
         return True
 
 
@@ -483,14 +483,14 @@ class ErgoJSONFormatter(logging.Formatter):
         })
     """
 
-    def __init__(self, fmt=None, datefmt=None, style='%'):
-        super().__init__(fmt=fmt, datefmt=datefmt, style=style)
+    def __init__(self, fmt=None, datefmt=None, style: str = '%'):
+        super().__init__(fmt=fmt, datefmt=datefmt, style=style)  # type: ignore[arg-type]
 
     def format(self, record):
         import json
         from datetime import datetime, timezone
 
-        obj = {
+        obj: dict[str, Any] = {
             'timestamp': datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             'level': record.levelname,
             'name': record.name,
@@ -498,9 +498,10 @@ class ErgoJSONFormatter(logging.Formatter):
         }
 
         # Include tags if present
-        if hasattr(record, 'tag_list') and record.tag_list:
+        tag_list = getattr(record, 'tag_list', None)  # type: ignore[attr-defined]
+        if tag_list:
             tags_dict = {}
-            for tag in record.tag_list:
+            for tag in tag_list:
                 if '=' in tag:
                     key, val = tag.split('=', 1)
                     tags_dict[key] = val
@@ -509,12 +510,14 @@ class ErgoJSONFormatter(logging.Formatter):
             obj['tags'] = tags_dict
 
         # Include event context if present (wide events)
-        if hasattr(record, 'event') and record.event:
-            obj['event'] = record.event
+        event = getattr(record, 'event', None)  # type: ignore[attr-defined]
+        if event:
+            obj['event'] = event
 
         # Include duration if present (timers/events)
-        if hasattr(record, 'duration') and record.duration is not None:
-            obj['duration_s'] = round(record.duration, 6)
+        duration = getattr(record, 'duration', None)  # type: ignore[attr-defined]
+        if duration is not None:
+            obj['duration_s'] = round(duration, 6)
 
         # Include error info if present
         if record.exc_info:
