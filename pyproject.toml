@@ -1,6 +1,6 @@
 [project]
 name = "ergolog"
-version = "1.0.0"
+version = "0.2.0"
 description = "A minimal, ergonomic python logging wrapper"
 readme = "README.md"
 authors = [{ name = "David Kincaid", email = "daelonsuzuka@gmail.com" }]
